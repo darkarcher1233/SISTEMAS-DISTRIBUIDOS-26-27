@@ -23,7 +23,12 @@ def handle_client(conn, addr):
                 connected = False
             
             # string ya esta comprabada esta comprobada que tiene 3 palabras 1 es numero  operacion 3 otro numero
-            num1, op, num2 = msg.split()
+            partes = msg.split()
+            if(len(partes) != 3):
+                resultado = "Formato incorrecto, formato es numero|operacion|numero"
+                conn.send(resultado.encode(FORMAT))
+            if(len(partes) == 3):
+                num1, op, num2 = partes
 
             try:
                 num1 = float(num1)
@@ -31,13 +36,16 @@ def handle_client(conn, addr):
                 
                 match op:
                     case "+":
-                        resultado = f"Resultado de la operacion: {num1 / num2}"
+                        resultado = f"Resultado de la operacion: {num1 + num2}"
                     case "-":
-                        resultado = f"Resultado de la operacion: {num1 / num2}"
+                        resultado = f"Resultado de la operacion: {num1 - num2}"
                     case "*":
-                        resultado = f"Resultado de la operacion: {num1 / num2}"
+                        resultado = f"Resultado de la operacion: {num1 * num2}"
                     case "/":
-                        resultado = f"Resultado de la operacion: {num1 / num2}"
+                        if num2 == 0:
+                            resultado = "Error: Division por cero"
+                        else:
+                            resultado = f"Resultado de la operacion: {num1 / num2}"
                     case _:
                         resultado = "Formato incorrecto, formato es numero|operacion|numero"
                     
@@ -81,4 +89,3 @@ server.bind(ADDR)
 print("[STARTING] Servidor inicializándose...")
 
 start()
-
