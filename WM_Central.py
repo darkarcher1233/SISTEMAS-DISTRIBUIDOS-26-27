@@ -1,79 +1,71 @@
-#SERVIDOR
-import socket
+#server
+
+
+import socket 
 import threading
+
 
 HEADER = 64
 PORT = 5050
+SERVER = socket.gethostbyname(socket.gethostname())
+ADDR = (SERVER, PORT)
 FORMAT = 'utf-8'
-MAX_CONEXIONES = 10
+FIN = "FIN"
+MAX_CONEXIONES = 2
+
+def handle_client(conn, addr):
+    print(f"[NUEVA CONEXION] {addr} connected.")
+
+    connected = True
+    while connected:
+        msg_length = conn.recv(HEADER).decode(FORMAT)
+        if msg_length:
+            msg_length = int(msg_length)
+            msg = conn.recv(msg_length).decode(FORMAT)
+            if msg == FIN:
+                connected = False
+            
+            # string ya esta comprabada esta comprobada que tiene 3 palabras 1 es numero  operacion 3 otro numero
+            partes = msg.split("#")
+            if(len(partes) != 3):
+                resultado = "Formato incorrecto, formato es <Registro>#<id_Estacion>#<Ubicacion>"
+                conn.send(resultado.encode(FORMAT))
+            if(len(partes) == 3):
+                registro,id_Estacion, ubicacion  = partes
+                print(f"He recibido del cliente [{addr}] los datos: {registro} {id_Estacion} {ubicacion}")
+            
+            conn.send(f"STATUS#OK#Estacion registrada correctamente".encode(FORMAT))
+    print("ADIOS. TE ESPERO EN OTRA OCASION")
+    conn.close()
+    
+        
+
+def start():
+    server.listen()
+    print(f"[LISTENING] Servidor a la escucha en {SERVER}")
+    CONEX_ACTIVAS = threading.active_count()-1
+    print(CONEX_ACTIVAS)
+    while True:
+        conn, addr = server.accept()
+        CONEX_ACTIVAS = threading.active_count()
+        if (CONEX_ACTIVAS <= MAX_CONEXIONES): 
+            thread = threading.Thread(target=handle_client, args=(conn, addr))
+            thread.start()
+            print(f"[CONEXIONES ACTIVAS] {CONEX_ACTIVAS}")
+            print("CONEXIONES RESTANTES PARA CERRAR EL SERVICIO", MAX_CONEXIONES-CONEX_ACTIVAS)
+        else:
+            print("OOppsss... DEMASIADAS CONEXIONES. ESPERANDO A QUE ALGUIEN SE VAYA")
+            conn.send("OOppsss... DEMASIADAS CONEXIONES. Tendrás que esperar a que alguien se vaya".encode(FORMAT))
+            conn.close()
+            CONEX_ACTUALES = threading.active_count()-1
+        
+
+######################### MAIN ##########################
 
 
-class WM_Central:
-    """Servidor central que acepta registros de estaciones (concurrencia con hilos)."""
-    def __init__(self, host=None, port=PORT, max_conex=MAX_CONEXIONES):
-        self.SERVER = host if host else socket.gethostbyname(socket.gethostname())
-        self.PORT = int(port)
-        self.ADDR = (self.SERVER, self.PORT)
-        self.HEADER = HEADER
-        self.FORMAT = FORMAT
-        self.MAX_CONEXIONES = max_conex
+server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server.bind(ADDR)
 
-        self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server.bind(self.ADDR)
+print("[STARTING] Servidor inicializándose...")
 
-    def handle_client(self, conn, addr):
-        print(f"[NUEVA CONEXION] {addr} connected.")
-        connected = True
-        while connected:
-            try:
-                msg_length = conn.recv(self.HEADER).decode(self.FORMAT)
-                if not msg_length:
-                    break
-                msg_length = int(msg_length)
-                msg = conn.recv(msg_length).decode(self.FORMAT)
-                if not msg:
-                    break
-                if msg == "FIN":
-                    connected = False
-                    break
-
-                partes = msg.split('#')
-                if len(partes) != 3 or partes[0] != 'REGISTRO':
-                    resultado = "STATUS#ERROR#Formato incorrecto. Use REGISTRO#<ID>#<UBICACION>"
-                    conn.send(resultado.encode(self.FORMAT))
-                else:
-                    _, station_id, location = partes
-                    if not station_id.strip() or not location.strip():
-                        resultado = "STATUS#ERROR#ID o UBICACION vacíos"
-                        conn.send(resultado.encode(self.FORMAT))
-                    else:
-                        print(f"[REGISTRO] Estacion ID={station_id} - Ubicacion={location} - desde {addr}")
-                        resultado = "STATUS#OK#Estacion registrada correctamente"
-                        conn.send(resultado.encode(self.FORMAT))
-
-            except Exception as e:
-                print(f"[ERROR] {e}")
-                break
-
-        conn.close()
-        print(f"[DESCONECTADO] {addr} cerrado.")
-
-    def start(self):
-        self.server.listen()
-        print(f"[LISTENING] WM_Central a la escucha en {self.SERVER}:{self.PORT}")
-        while True:
-            conn, addr = self.server.accept()
-            CONEX_ACTIVAS = threading.active_count()
-            if CONEX_ACTIVAS <= self.MAX_CONEXIONES:
-                thread = threading.Thread(target=self.handle_client, args=(conn, addr), daemon=True)
-                thread.start()
-                print(f"[CONEXIONES ACTIVAS] {threading.active_count()-1}")
-            else:
-                print("OOppsss... DEMASIADAS CONEXIONES. Rechazando nueva conexión")
-                conn.send("STATUS#ERROR#Servidor ocupado, inténtalo más tarde".encode(self.FORMAT))
-                conn.close()
-
-
-if __name__ == '__main__':
-    server = WM_Central()
-    server.start()
+start()
