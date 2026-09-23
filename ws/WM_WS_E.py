@@ -25,29 +25,48 @@ NO HACE FALTA: reconexión automática (si se cae, se reinicia a mano)
 Mensajes: docs/PROTOCOLO.md
 """
 
+averia = False
 
-HOST = 'localhost'
-PORT = 8010
-#Se importa el módulo
 import socket
- 
-#Creación de un objeto socket (lado cliente)
-obj = socket.socket()
- 
-#Conexión con el servidor. Parametros: IP (puede ser del tipo 192.168.1.1 o localhost), Puerto
-obj.connect((HOST, PORT))
-print("Conectado al servidor")
-mens= input()
-msg=mens.encode('utf-8')
-print("Enviando : ", mens)
+import sys
+import threading
+import common.sockets_utils  
+import time
 
-#Con el método send, enviamos el mensaje
-obj.send(msg)
+def responder_health_check(sock):
+  while True:
+    msg = common.sockets_utils.recibir(sock)
+    if not msg:
+      print("Monitor desconectado")
+      break
+    if msg == "HC":
+      if averia == False:
+        common.sockets_utils.enviar(sock, "OK")
+      else:
+        common.sockets_utils.enviar(sock, "KO")
+    
+    
+    
 
-#Cerramos la instancia del objeto servidor
-respuesta=obj.recv(4096)
-print(respuesta.decode('utf-8'))
 
-obj.close()
+if len(sys.argv) != 3:
+  print("USO: python -m ws.WM_WS_E <ip_broker:puerto> <ip_monitor:puerto>")
+  exit()
+  
+  
+ip_broker, puerto_broker = sys.argv[1].split(":")
+ip_monitor, puerto_monitor = sys.argv[2].split(":")
+puerto_broker = int(puerto_broker)
+puerto_monitor = int(puerto_monitor)
 
-print("Conexión cerrada")
+my_socket = socket.socket()
+my_socket.connect((ip_monitor,puerto_monitor))
+
+mensaje = common.sockets_utils.recibir(my_socket)
+ws_id = mensaje.split("#")[1]
+
+print(f"[{ws_id}] conectado al monitor")
+threading.Thread(target=responder_health_check, args=(my_socket,), daemon=True).start()
+
+while True:          # Блок 7 (временно), держит программу живой
+  time.sleep(1)
