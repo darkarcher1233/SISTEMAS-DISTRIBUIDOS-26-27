@@ -21,3 +21,15 @@ El enunciado lo recomienda, pero no es obligatorio.
 
 HECHO CUANDO: Abde puede importarlo en WM_Central y en monitor_central.py
 """
+
+
+#### CONSTANTES
+HEADER = 64
+FORMAT = "utf-8"
+#### CONSTANTES
+
+def enviar(sock, msg: str):
+      pass
+      
+def recibir(sock):
+      pass
