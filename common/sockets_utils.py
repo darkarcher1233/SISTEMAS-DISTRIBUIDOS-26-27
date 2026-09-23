@@ -23,13 +23,32 @@ HECHO CUANDO: Abde puede importarlo en WM_Central y en monitor_central.py
 """
 
 
+
 #### CONSTANTES
 HEADER = 64
 FORMAT = "utf-8"
 #### CONSTANTES
 
 def enviar(sock, msg: str):
-      pass
+      mensaje = msg.encode(FORMAT) #str to bites
+      msg_length = len(mensaje)
+      send_length = str(msg_length).encode(FORMAT) 
+      send_length += b" " * (HEADER - len(send_length)) 
+      
+      sock.send(send_length)
+      sock.send(mensaje)  
+      
+      
+       
       
 def recibir(sock):
-      pass
+      try:
+            header = sock.recv(HEADER)
+      except ConnectionResetError:
+            return None
+      if not header:             
+            return None
+      
+      msg_length = int(header.decode(FORMAT))
+      mensaje = sock.recv(msg_length).decode(FORMAT)
+      return mensaje
