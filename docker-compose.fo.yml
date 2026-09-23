@@ -1,0 +1,7 @@
+# docker-compose del LABORATORIO, PC 1: dos operarios (WM_FO)
+# Responsable: Vlad · Semana 4
+#
+# Qué debe tener (con el Dockerfile común):
+#   fo1, fo2   con su id de operario y su fichero de peticiones (fo/peticiones/)
+#   - broker de Kafka (Railway) sacado del .env
+#   - stdin_open: true + tty: true (menú por teclado) -> docker attach <contenedor>

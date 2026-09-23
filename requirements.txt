@@ -1,0 +1,4 @@
+# Dependencias de Python del proyecto (pip install -r requirements.txt)
+# Semana 1: nada (solo la librería estándar: socket, threading, sqlite3)
+# Semana 2: añadir  kafka-python          (Vlad, tarjeta "Kafka en local")
+# Semana 3: añadir  colorama              (Vlad, panel de Central)

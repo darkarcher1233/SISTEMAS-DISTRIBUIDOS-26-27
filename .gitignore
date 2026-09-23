@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Base de datos local (cada uno la suya; en Railway vive en un volumen)
+*.db
+
+# Configuración con IPs y secretos
+.env
+
+# Material de la asignatura (enunciado, presentaciones): no se sube al repo
+docs/enunciado/
+
+# Editores / sistema
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

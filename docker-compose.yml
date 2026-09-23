@@ -1,0 +1,5 @@
+# docker-compose para DESARROLLO LOCAL: solo Kafka
+# Responsable: Vlad · Semana 2 · Tarjeta: "Kafka en local (docker-compose) + kafka_utils + topics"
+#
+# Qué debe tener: el servicio de Kafka copiado del "Tutorial Kafka Docker" de la asignatura
+# (docs/enunciado/). Uso:  docker compose up -d

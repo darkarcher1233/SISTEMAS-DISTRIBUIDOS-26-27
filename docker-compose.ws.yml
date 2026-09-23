@@ -1,0 +1,7 @@
+# docker-compose del LABORATORIO, PC 2: dos Watering Stations
+# Responsable: Vlad · Semana 4
+#
+# Qué debe tener (todos con el Dockerfile común):
+#   ws1_m, ws1_e, ws2_m, ws2_e   (Monitor + Engine de cada WS)
+#   - IPs de Central y Kafka (Railway) sacadas del .env
+#   - stdin_open: true + tty: true en los Engine (usan el teclado) -> docker attach <contenedor>
