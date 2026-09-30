@@ -1,8 +1,25 @@
 """
-WM_WS_M.py: programa principal del Monitor de una Watering Station.
+WM_WS_M.py: MONITOR de la Watering Station, programa principal (nombre obligatorio: WM_WS_M)
+Responsable: Abde (este fichero y monitor_central.py) · Vlad (monitor_engine.py)
+Semana 1 · Tarjeta Trello: "WM_WS_M, parte Central"
 
-Uso: python -m ws.WM_WS_M <puerto_engine> <ip_central:puerto> <id_ws> [ubicacion]
+USO
+    python -m ws.WM_WS_M <puerto_para_engine> <ip_central:puerto> <id_ws> [ubicacion]
+
+QUÉ TIENE QUE HACER (solo coordinar: la lógica está en los otros dos ficheros)
+  1. Leer y validar los argumentos
+  2. monitor_central.registrar(...)                   -> se registra en Central (Abde)
+  3. monitor_engine.iniciar_servidor_engine(...)      -> en un hilo: espera al Engine y
+                                                          hace el health check (Vlad)
+  4. Mantenerse vivo mostrando el estado de la WS
+
+POR QUÉ ESTÁ DIVIDIDO: cada uno trabaja en su fichero y no hay conflictos en Git.
+-------------------------------------------------------------------------------
+Debajo está la versión inicial de Abde. Ahora mismo es un cliente simple: hay que
+adaptarla a lo de arriba y mover la lógica de conexión a monitor_central.py.
 """
+
+#cliente
 
 import sys
 import threading
