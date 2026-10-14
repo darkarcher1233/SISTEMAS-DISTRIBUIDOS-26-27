@@ -1,7 +1,7 @@
 """Acceso a la base de datos SQLite de Central."""
 
 import os
-import sqlite3
+import sqlite3 #DB
 import threading
 
 DB_PATH = os.environ.get("WATER_DB", "water.db")

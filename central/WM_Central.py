@@ -41,7 +41,13 @@ import threading
 import time
 from datetime import datetime
 
-from central.db import crear_tablas, guardar_estacion, guardar_riego, set_estado
+from central.db import (
+    crear_tablas,
+    get_estaciones,
+    guardar_estacion,
+    guardar_riego,
+    set_estado,
+)
 from common.kafka_utils import TOPIC_TELEMETRIA, consumidor
 from common.sockets_utils import enviar, recibir
 
@@ -90,6 +96,8 @@ def registrar_ws(conn, ws_id, ubicacion):
         estaciones[ws_id] = {"ubicacion": ubicacion, "estado": DISPONIBLE,
                              "caudal": 0.0, "volumen": 0.0, "operario": None}
         conexiones[ws_id] = conn
+        guardar_estacion(ws_id, ubicacion)
+        set_estado(ws_id, DISPONIBLE)
 
         if ya_existia:
             log(f"REG: {ws_id} ya existía, se actualiza (ubicación: {ubicacion})")
@@ -98,6 +106,20 @@ def registrar_ws(conn, ws_id, ubicacion):
         if anterior is not None and anterior is not conn:
             log(f"AVISO: {ws_id} ya tenía otra conexión abierta; a partir de ahora vale esta")
         imprimir_tabla()
+
+
+def cargar_estaciones():
+    """Restaura las estaciones persistidas y las marca desconectadas al iniciar."""
+    with lock:
+        for ws_id, ubicacion, _estado_anterior in get_estaciones():
+            estaciones[ws_id] = {
+                "ubicacion": ubicacion,
+                "estado": DESCONECTADA,
+                "caudal": 0.0,
+                "volumen": 0.0,
+                "operario": None,
+            }
+            set_estado(ws_id, DESCONECTADA)
 
 
 def cambiar_estado(conn_o_ws_id, ws_id=None, nuevo_estado=None):
@@ -274,6 +296,7 @@ def main():
     servidor.settimeout(1)
 
     crear_tablas()
+    cargar_estaciones()
     log(f"WM_Central escuchando en el puerto {puerto} (broker Kafka {broker})")
     with lock:
         imprimir_tabla()
