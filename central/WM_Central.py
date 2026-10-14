@@ -33,18 +33,23 @@ ESTADOS: DISPONIBLE · REGANDO · FUGA · FUERA_SERVICIO · DESCONECTADA
 MENSAJES: docs/PROTOCOLO.md
 -------------------------------------------------------------------------------
 Basado en ejemplos/servidor_concurrente.py: un hilo por cada Monitor conectado.
-"""
+""" 
 
 import socket
 import sys
 import threading
 import time
+from datetime import datetime
 
+from central.db import crear_tablas, guardar_estacion, guardar_riego, set_estado
+from common.kafka_utils import TOPIC_TELEMETRIA, consumidor
 from common.sockets_utils import enviar, recibir
 
 # Estados que se usan en la semana 1 (REGANDO y FUERA_SERVICIO llegan en las semanas 2 y 3)
 DISPONIBLE = "DISPONIBLE"
+REGANDO = "REGANDO"
 FUGA = "FUGA"
+FUERA_SERVICIO = "FUERA_SERVICIO"
 DESCONECTADA = "DESCONECTADA"
 
 # Estado de todas las WS, en memoria (en la semana 2 también se guardará en SQLite):
@@ -95,15 +100,32 @@ def registrar_ws(conn, ws_id, ubicacion):
         imprimir_tabla()
 
 
-def cambiar_estado(conn, ws_id, nuevo_estado):
-    """FUGA / RESUELTA. Solo se aceptan de la conexión por la que se registró esa WS:
-    devuelve False si no es así (WS sin registrar o que pertenece a otro Monitor)."""
+def cambiar_estado(conn_o_ws_id, ws_id=None, nuevo_estado=None):
+    """Actualiza el estado de una WS.
+
+    Soporta la API antigua: cambiar_estado(conn, ws_id, nuevo_estado)
+    y la versión más directa del enunciado: cambiar_estado(ws_id, nuevo_estado)
+    """
+    if nuevo_estado is None:
+        ws_id, nuevo_estado = conn_o_ws_id, ws_id
+        conn = None
+    else:
+        conn = conn_o_ws_id
+
     with lock:
-        if conexiones.get(ws_id) is not conn:
+        if ws_id not in estaciones:
             return False
+        if conn is not None and conexiones.get(ws_id) is not conn:
+            return False
+
         estado_anterior = estaciones[ws_id]["estado"]
-        if estado_anterior != nuevo_estado:
+        if nuevo_estado in (DISPONIBLE, REGANDO, FUGA, FUERA_SERVICIO, DESCONECTADA):
             estaciones[ws_id]["estado"] = nuevo_estado
+            if nuevo_estado == DISPONIBLE:
+                estaciones[ws_id]["caudal"] = 0.0
+                estaciones[ws_id]["volumen"] = 0.0
+                estaciones[ws_id]["operario"] = None
+            set_estado(ws_id, nuevo_estado)
             log(f"ESTADO: {ws_id} {estado_anterior} -> {nuevo_estado}")
             imprimir_tabla()
         return True
@@ -119,8 +141,67 @@ def desconectar_ws(conn, ws_id):
         del conexiones[ws_id]
         estado_anterior = estaciones[ws_id]["estado"]
         estaciones[ws_id]["estado"] = DESCONECTADA
+        set_estado(ws_id, DESCONECTADA)
         log(f"ESTADO: {ws_id} {estado_anterior} -> {DESCONECTADA}")
         imprimir_tabla()
+
+
+def procesar_telemetria(mensaje):
+    """Actualiza estado y valores de una estación a partir de un mensaje de Kafka."""
+    if not isinstance(mensaje, dict):
+        return False
+
+    ws_id = mensaje.get("ws_id")
+    if ws_id is None:
+        return False
+
+    with lock:
+        if ws_id not in estaciones:
+            return False
+
+        if mensaje.get("tipo") == "TELEMETRIA":
+            caudal = float(mensaje.get("caudal", estaciones[ws_id].get("caudal", 0.0)))
+            volumen = float(mensaje.get("volumen", estaciones[ws_id].get("volumen", 0.0)))
+            operario = mensaje.get("operario", estaciones[ws_id].get("operario"))
+            estaciones[ws_id]["caudal"] = caudal
+            estaciones[ws_id]["volumen"] = volumen
+            estaciones[ws_id]["operario"] = operario
+            estaciones[ws_id]["estado"] = REGANDO
+            set_estado(ws_id, REGANDO)
+            log(f"TELEMETRIA: {ws_id} caudal={caudal:.2f} L/min volumen={volumen:.2f} L")
+            imprimir_tabla()
+            return True
+
+        if mensaje.get("tipo") == "FIN":
+            volumen = float(mensaje.get("volumen", estaciones[ws_id].get("volumen", 0.0)))
+            motivo = mensaje.get("motivo", "FIN")
+            operario = estaciones[ws_id].get("operario")
+            if operario is not None:
+                inicio = mensaje.get("inicio") or datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+                fin = mensaje.get("fin") or datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+                guardar_riego(ws_id, operario, inicio, fin, volumen)
+            estaciones[ws_id]["caudal"] = 0.0
+            estaciones[ws_id]["volumen"] = volumen
+            estaciones[ws_id]["operario"] = None
+            estaciones[ws_id]["estado"] = DISPONIBLE
+            set_estado(ws_id, DISPONIBLE)
+            log(f"FIN: {ws_id} motivo={motivo} volumen={volumen:.2f} L")
+            imprimir_tabla()
+            return True
+
+        return False
+
+
+def consumir_telemetria(broker):
+    """Hilo consumidor del topic 'telemetria' de Kafka."""
+    try:
+        consumer = consumidor(broker, TOPIC_TELEMETRIA, group_id="central_telemetria")
+        for mensaje in consumer:
+            if not isinstance(mensaje.value, dict):
+                continue
+            procesar_telemetria(mensaje.value)
+    except Exception as exc:  # noqa: BLE001 - se trata como error de sistema en la consola
+        log(f"ERROR Kafka telemetria ({broker}): {exc}")
 
 
 def atender_monitor(conn, addr):
@@ -192,9 +273,17 @@ def main():
     # accept() se despierta cada segundo: en Windows, si se queda bloqueado, Ctrl+C no lo para
     servidor.settimeout(1)
 
-    log(f"WM_Central escuchando en el puerto {puerto} (broker Kafka {broker}: todavía no se usa)")
+    crear_tablas()
+    log(f"WM_Central escuchando en el puerto {puerto} (broker Kafka {broker})")
     with lock:
         imprimir_tabla()
+
+    consumo_kafka = threading.Thread(
+        target=consumir_telemetria,
+        args=(broker,),
+        daemon=True,
+    )
+    consumo_kafka.start()
 
     try:
         while True:
