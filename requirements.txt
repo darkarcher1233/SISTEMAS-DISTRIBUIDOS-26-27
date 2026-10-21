@@ -3,4 +3,4 @@
 # Semana 2: añadir  kafka-python          (Vlad, tarjeta "Kafka en local")
 # Semana 3: añadir  colorama              (Vlad, panel de Central)
 
-kafka-python>=2.0.2
+kafka-python>=2.2.0

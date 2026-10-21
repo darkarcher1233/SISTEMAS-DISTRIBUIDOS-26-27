@@ -45,7 +45,31 @@ Mensajes en JSON; todos llevan `"tipo"`. Implementación: `common/kafka_utils.py
 
 Cada WS y cada FO lee todo `ordenes` y se queda solo con lo que lleva su `ws_id` / `fo_id`.
 
-_TODO semana 2: un ejemplo de JSON de cada tipo._
+### Ejemplos de JSON (semana 2)
+
+Topic `ordenes` (Central -> WS):
+
+```json
+{"tipo": "REGAR",    "ws_id": "WS1", "duracion": 30, "operario": "OP1"}
+{"tipo": "BLOQUEAR", "ws_id": "WS1"}
+{"tipo": "ACTIVAR",  "ws_id": "WS1"}
+```
+
+Topic `telemetria` (WS -> Central):
+
+```json
+{"tipo": "TELEMETRIA", "ws_id": "WS1", "caudal": 18.42, "volumen": 0.307, "operario": "OP1"}
+{"tipo": "FIN", "ws_id": "WS1", "volumen": 9.21, "duracion": 30.0, "motivo": "TIEMPO"}
+```
+
+`motivo` del FIN:
+
+| Valor      | Cuándo lo pone el Engine |
+|------------|--------------------------|
+| `TIEMPO`   | Se agotó la duración solicitada |
+| `MANUAL`   | El operario pulsó `s` en el menú del Engine |
+| `FUGA`     | Se activó `averia = True` durante el riego |
+| `BLOQUEO`  | Llegó una orden `BLOQUEAR` mientras regaba |
 
 ## 3. Flujo de un riego (resumen)
 

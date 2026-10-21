@@ -61,18 +61,16 @@ class _LazyKafkaConsumer:
 
     def _get_consumer(self) -> KafkaConsumer:
         if self._consumer is None:
+            # Valores por defecto que el usuario puede sobrescribir vía **kwargs
             opciones = {
+                "bootstrap_servers": self._broker,
+                "group_id": self._group_id,
+                "value_deserializer": _deserializar_json,
                 "auto_offset_reset": "earliest",
                 "enable_auto_commit": True,
             }
             opciones.update(self._kwargs)
-            self._consumer = KafkaConsumer(
-                self._topic,
-                bootstrap_servers=self._broker,
-                group_id=self._group_id,
-                value_deserializer=_deserializar_json,
-                **opciones,
-            )
+            self._consumer = KafkaConsumer(self._topic, **opciones)
         return self._consumer
 
     def __getattr__(self, name: str):
