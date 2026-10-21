@@ -61,14 +61,17 @@ class _LazyKafkaConsumer:
 
     def _get_consumer(self) -> KafkaConsumer:
         if self._consumer is None:
+            opciones = {
+                "auto_offset_reset": "earliest",
+                "enable_auto_commit": True,
+            }
+            opciones.update(self._kwargs)
             self._consumer = KafkaConsumer(
                 self._topic,
                 bootstrap_servers=self._broker,
                 group_id=self._group_id,
                 value_deserializer=_deserializar_json,
-                auto_offset_reset="earliest",
-                enable_auto_commit=True,
-                **self._kwargs,
+                **opciones,
             )
         return self._consumer
 
