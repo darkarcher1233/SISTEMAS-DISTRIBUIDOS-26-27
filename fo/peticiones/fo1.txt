@@ -1,0 +1,10 @@
+# Peticiones del operario FO1 (modo fichero: opción 3 del menú de WM_FO)
+# Formato: ws_id;duracion_en_segundos   (líneas vacías y con # se ignoran)
+# Entre una petición y la siguiente: espera a que termine + 4 s.
+#
+# 1) Riego normal en WS1                       -> AUTORIZADO, TELEMETRIA, RESUMEN motivo=TIEMPO
+# 2) WS que no existe                          -> DENEGADO
+# 3) WS1 otra vez; coincide con la 2ª de FO2   -> uno de los dos recibe DENEGADO (WS ocupada)
+WS1;10
+WS9;5
+WS1;8

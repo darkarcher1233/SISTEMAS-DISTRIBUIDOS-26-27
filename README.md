@@ -106,7 +106,8 @@ docker compose -f docker-compose.fo.yml down
 | El Engine no conecta a Kafka / no llegan órdenes | `KAFKA_BROKER` mal, o Kafka anuncia `localhost` | Revisar `.env`; el broker de AWS debe anunciar su IP pública |
 | `logs` vacíos | Imagen antigua sin `PYTHONUNBUFFERED=1`, o el programa espera en `input()` | `up -d --build`; hacer `attach` y pulsar Enter |
 | El Engine se reinició y el Monitor no lo vuelve a aceptar | El Monitor solo acepta un Engine por ejecución | `docker compose -f docker-compose.ws.yml restart ws1_m ws1_e` |
-| `fo1`/`fo2` en `Exited (0)` | `WM_FO` aún no tiene menú (termina al instante) | Normal hasta terminar WM_FO |
+| `fo1`/`fo2` en `Restarting` | El FO no llega a Kafka (`ERROR Kafka 'ordenes'` en `logs`) | Revisar `KAFKA_BROKER` en `.env` |
+| El FO envía la PETICION pero no recibe nada | Central aún no procesa `peticiones` o no está arrancada | Mirar la consola de Central; para probar solo el FO: `tests/central_falsa_fo.py` |
 
 ## Plan
 
