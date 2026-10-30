@@ -1,0 +1,12 @@
+# Lo que NO se copia a la imagen con "COPY . ."
+.git
+__pycache__
+*.pyc
+.env
+*.db
+docs/capturas
+docs/enunciado
+.venv
+venv
+.vscode
+.idea

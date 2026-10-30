@@ -1,7 +1,29 @@
 # docker-compose del LABORATORIO, PC 1: dos operarios (WM_FO)
 # Responsable: Vlad · Semana 4
 #
-# Qué debe tener (con el Dockerfile común):
-#   fo1, fo2   con su id de operario y su fichero de peticiones (fo/peticiones/)
-#   - broker de Kafka (Railway) sacado del .env
-#   - stdin_open: true + tty: true (menú por teclado) -> docker attach <contenedor>
+# Uso (desde la raíz del repo, con el .env creado a partir de .env.example):
+#   docker compose -f docker-compose.fo.yml up -d --build
+#   docker attach fo1          (menú del operario; salir sin matarlo: Ctrl+P y luego Ctrl+Q)
+#
+# El FO solo usa Kafka (no sockets): basta con ${KAFKA_BROKER} del .env.
+# Los ficheros de fo/peticiones/ van dentro de la imagen (COPY . .).
+
+name: sd-fo   # nombre de proyecto propio: no se mezcla con el Kafka de docker-compose.yml
+
+services:
+  fo1:
+    build: .
+    image: sd-app
+    container_name: fo1
+    command: ["python", "-m", "fo.WM_FO", "${KAFKA_BROKER}", "FO1"]
+    restart: on-failure
+    stdin_open: true   # menú con input()
+    tty: true
+
+  fo2:
+    image: sd-app
+    container_name: fo2
+    command: ["python", "-m", "fo.WM_FO", "${KAFKA_BROKER}", "FO2"]
+    restart: on-failure
+    stdin_open: true
+    tty: true
