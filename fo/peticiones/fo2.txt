@@ -1,0 +1,11 @@
+# Peticiones del operario FO2 (modo fichero: opción 3 del menú de WM_FO)
+# Formato: ws_id;duracion_en_segundos   (líneas vacías y con # se ignoran)
+#
+# 1) Riego largo en WS2. Para enseñar la FUGA: durante este riego, en "docker attach ws2_e"
+#    pulsar f -> FO2 ve el aviso "RIEGO EN WS2 INTERRUMPIDO POR FUGA" (luego r para repararla).
+#    Para el BLOQUEO: bloquear WS2 desde el menú de Central.
+# 2) WS1 mientras FO1 la usa                   -> DENEGADO (WS ocupada)
+# 3) Riego corto en WS2                        -> AUTORIZADO (si WS2 vuelve a estar DISPONIBLE)
+WS2;15
+WS1;5
+WS2;6
