@@ -9,6 +9,7 @@ from central.WM_Central import (
     cargar_estaciones,
     bloquear_estacion,
     procesar_peticion,
+    procesar_telemetria,
     publicar_estado_ws,
     registrar_ws,
 )
@@ -119,3 +120,68 @@ def test_bloquear_estacion_marks_station_out_of_service():
     bloquear_estacion("ws-block")
 
     assert estaciones["ws-block"]["estado"] == FUERA_SERVICIO
+
+
+def test_procesar_peticion_rejects_unknown_operator():
+    estaciones.clear()
+    estaciones["ws-fo"] = {
+        "ubicacion": "Patio",
+        "estado": DISPONIBLE,
+        "caudal": 0.0,
+        "volumen": 0.0,
+        "operario": None,
+    }
+
+    class DummyProducer:
+        def __init__(self):
+            self.messages = []
+
+        def send(self, topic, value=None, *args, **kwargs):
+            self.messages.append((topic, value))
+            return None
+
+        def flush(self):
+            pass
+
+    prod = DummyProducer()
+
+    ok = procesar_peticion({"tipo": "PETICION", "fo_id": "FO999", "ws_id": "ws-fo", "duracion": 15}, prod)
+
+    assert ok is False
+    assert prod.messages[0][1]["tipo"] == "DENEGADO"
+    assert prod.messages[0][1]["motivo"] == "Operario no válido"
+
+
+def test_procesar_telemetria_reenvia_a_fo_and_summary():
+    estaciones.clear()
+    estaciones["ws-tele"] = {
+        "ubicacion": "Huerto",
+        "estado": DISPONIBLE,
+        "caudal": 0.0,
+        "volumen": 0.0,
+        "operario": "FO1",
+    }
+
+    class DummyProducer:
+        def __init__(self):
+            self.messages = []
+
+        def send(self, topic, value=None, *args, **kwargs):
+            self.messages.append((topic, value))
+            return None
+
+        def flush(self):
+            pass
+
+    prod = DummyProducer()
+
+    procesar_telemetria({"tipo": "TELEMETRIA", "ws_id": "ws-tele", "caudal": 20.0, "volumen": 4.0, "operario": "FO1"}, prod)
+    procesar_telemetria({"tipo": "FIN", "ws_id": "ws-tele", "volumen": 7.5, "duracion": 20.0, "motivo": "TIEMPO"}, prod)
+
+    telemetry = next(m for _, m in prod.messages if isinstance(m, dict) and m.get("tipo") == "TELEMETRIA")
+    resumen = next(m for _, m in prod.messages if isinstance(m, dict) and m.get("tipo") == "RESUMEN")
+
+    assert telemetry["fo_id"] == "FO1"
+    assert telemetry["ws_id"] == "ws-tele"
+    assert resumen["fo_id"] == "FO1"
+    assert resumen["motivo"] == "TIEMPO"
