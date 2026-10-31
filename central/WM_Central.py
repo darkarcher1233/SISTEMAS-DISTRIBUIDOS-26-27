@@ -50,7 +50,13 @@ from central.db import (
     set_estado,
 )
 from central.panel import iniciar_panel
-from common.kafka_utils import TOPIC_TELEMETRIA, consumidor
+from common.kafka_utils import (
+    TOPIC_ORDENES,
+    TOPIC_PETICIONES,
+    TOPIC_TELEMETRIA,
+    consumidor,
+    productor,
+)
 from common.sockets_utils import enviar, recibir
 
 # Estados que se usan en la semana 1 (REGANDO y FUERA_SERVICIO llegan en las semanas 2 y 3)
@@ -221,6 +227,182 @@ def procesar_telemetria(mensaje):
         return False
 
 
+def _emitir_orden(prod, mensaje):
+    """Envía un mensaje al topic 'ordenes' usando el productor indicado o uno nuevo."""
+    if mensaje is None or not isinstance(mensaje, dict):
+        return None
+    if prod is None:
+        return None
+    prod.send(TOPIC_ORDENES, mensaje)
+    prod.flush()
+    return mensaje
+
+
+def publicar_estado_ws(prod=None, broker: str | None = None):
+    """Publica la instantánea del estado de todas las WS en el topic 'ordenes'."""
+    if prod is None and broker is None:
+        return None
+    if prod is None:
+        prod = productor(broker)
+        cerrar = True
+    else:
+        cerrar = False
+    try:
+        with lock:
+            estaciones_snapshot = [
+                {
+                    "ws_id": ws_id,
+                    "ubicacion": ws.get("ubicacion", ""),
+                    "estado": ws.get("estado", DISPONIBLE),
+                    "caudal": ws.get("caudal", 0.0),
+                    "volumen": ws.get("volumen", 0.0),
+                    "operario": ws.get("operario"),
+                }
+                for ws_id, ws in sorted(estaciones.items())
+            ]
+        mensaje = {"tipo": "ESTADO_WS", "estaciones": estaciones_snapshot}
+        _emitir_orden(prod, mensaje)
+        return mensaje
+    finally:
+        if cerrar:
+            prod.close()
+
+
+def orden_ws(ws_id, tipo, prod=None, **extra):
+    """Envía una orden concreta a una WS y opcionalmente actualiza el estado local."""
+    mensaje = {"tipo": tipo, "ws_id": ws_id, **extra}
+    _emitir_orden(prod, mensaje)
+    return mensaje
+
+
+def bloquear_estacion(ws_id, prod=None, broker: str | None = None):
+    """Bloquea la estación: la marca FUERA_SERVICIO y envía orden BLOQUEAR."""
+    if not ws_id:
+        return False
+
+    with lock:
+        if ws_id not in estaciones:
+            return False
+        estaciones[ws_id]["estado"] = FUERA_SERVICIO
+        estaciones[ws_id]["operario"] = None
+        set_estado(ws_id, FUERA_SERVICIO)
+        log(f"ORDEN CENTRAL: {ws_id} -> {FUERA_SERVICIO}")
+        imprimir_tabla()
+
+    if prod is None and broker is not None:
+        prod = productor(broker)
+        close_prod = True
+    else:
+        close_prod = False
+    try:
+        return orden_ws(ws_id, "BLOQUEAR", prod=prod) is not None
+    finally:
+        if close_prod:
+            prod.close()
+
+
+def activar_estacion(ws_id, prod=None, broker: str | None = None):
+    """Activa la estación; la deja DISONIBLE si estaba bloqueada."""
+    if not ws_id:
+        return False
+
+    with lock:
+        if ws_id not in estaciones:
+            return False
+        estaciones[ws_id]["estado"] = DISPONIBLE
+        estaciones[ws_id]["caudal"] = 0.0
+        estaciones[ws_id]["volumen"] = 0.0
+        estaciones[ws_id]["operario"] = None
+        set_estado(ws_id, DISPONIBLE)
+        log(f"ORDEN CENTRAL: {ws_id} -> {DISPONIBLE}")
+        imprimir_tabla()
+
+    if prod is None and broker is not None:
+        prod = productor(broker)
+        close_prod = True
+    else:
+        close_prod = False
+    try:
+        return orden_ws(ws_id, "ACTIVAR", prod=prod) is not None
+    finally:
+        if close_prod:
+            prod.close()
+
+
+def procesar_peticion(datos, prod=None, broker: str | None = None):
+    """Procesa una PETICION de Kafka y decide si autoriza o deniega el riego."""
+    if not isinstance(datos, dict):
+        return False
+    if datos.get("tipo") != "PETICION":
+        return False
+
+    fo_id = str(datos.get("fo_id", "")).strip()
+    ws_id = str(datos.get("ws_id", "")).strip()
+    try:
+        duracion = int(datos.get("duracion", 0))
+    except (TypeError, ValueError):
+        duracion = 0
+
+    if not fo_id or not ws_id or duracion <= 0:
+        mensaje = {"tipo": "DENEGADO", "fo_id": fo_id, "ws_id": ws_id, "motivo": "Petición inválida"}
+        if prod is None and broker is not None:
+            prod = productor(broker)
+            close_prod = True
+        else:
+            close_prod = False
+        try:
+            _emitir_orden(prod, mensaje)
+        finally:
+            if close_prod:
+                prod.close()
+        return False
+
+    with lock:
+        if ws_id not in estaciones:
+            motivo = "La WS no existe"
+        elif estaciones[ws_id]["estado"] != DISPONIBLE:
+            motivo = f"WS en estado {estaciones[ws_id]['estado']}"
+        else:
+            motivo = None
+
+    if motivo is not None:
+        mensaje = {"tipo": "DENEGADO", "fo_id": fo_id, "ws_id": ws_id, "motivo": motivo}
+        if prod is None and broker is not None:
+            prod = productor(broker)
+            close_prod = True
+        else:
+            close_prod = False
+        try:
+            _emitir_orden(prod, mensaje)
+        finally:
+            if close_prod:
+                prod.close()
+        return False
+
+    mensaje_regar = {"tipo": "REGAR", "ws_id": ws_id, "duracion": duracion, "operario": fo_id}
+    mensaje_autorizado = {"tipo": "AUTORIZADO", "fo_id": fo_id, "ws_id": ws_id, "duracion": duracion}
+
+    with lock:
+        estaciones[ws_id]["estado"] = REGANDO
+        estaciones[ws_id]["operario"] = fo_id
+        set_estado(ws_id, REGANDO)
+        log(f"PETICION AUTORIZADA: {fo_id} -> {ws_id} durante {duracion}s")
+        imprimir_tabla()
+
+    if prod is None and broker is not None:
+        prod = productor(broker)
+        close_prod = True
+    else:
+        close_prod = False
+    try:
+        _emitir_orden(prod, mensaje_regar)
+        _emitir_orden(prod, mensaje_autorizado)
+    finally:
+        if close_prod:
+            prod.close()
+    return True
+
+
 def consumir_telemetria(broker):
     """Hilo consumidor del topic 'telemetria' de Kafka."""
     try:
@@ -231,6 +413,92 @@ def consumir_telemetria(broker):
             procesar_telemetria(mensaje.value)
     except Exception as exc:  # noqa: BLE001 - se trata como error de sistema en la consola
         log(f"ERROR Kafka telemetria ({broker}): {exc}")
+
+
+def consumir_peticiones(broker):
+    """Hilo consumidor del topic 'peticiones' de Kafka: valida riegos y reenvía autorizaciones."""
+    try:
+        consumer = consumidor(broker, TOPIC_PETICIONES, group_id="central_peticiones")
+        for mensaje in consumer:
+            if not isinstance(mensaje.value, dict):
+                continue
+            try:
+                procesar_peticion(mensaje.value, broker=broker)
+            except Exception as exc:  # noqa: BLE001
+                log(f"ERROR procesando petición: {exc}")
+    except Exception as exc:  # noqa: BLE001
+        log(f"ERROR Kafka peticiones ({broker}): {exc}")
+
+
+def menu(broker):
+    """Menú interactivo del operador de Central para gestión manual de las estaciones."""
+    ayuda = "1 iniciar  2 bloquear  3 activar  4 estado  0 salir"
+    print(ayuda)
+    while True:
+        try:
+            opcion = input("> ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            break
+
+        if opcion in ("1", "iniciar"): 
+            ws_id = input("ws_id (o ALL): ").strip() or "ALL"
+            try:
+                duracion = int(input("duracion (segundos): ").strip())
+                if duracion <= 0:
+                    raise ValueError
+            except ValueError:
+                print("duracion invalida, debe ser un entero > 0")
+                continue
+            if ws_id == "ALL":
+                with lock:
+                    ids = list(sorted(estaciones))
+                for ws in ids:
+                    procesar_peticion({"tipo": "PETICION", "fo_id": "MANUAL", "ws_id": ws, "duracion": duracion}, broker=broker)
+            else:
+                procesar_peticion({"tipo": "PETICION", "fo_id": "MANUAL", "ws_id": ws_id, "duracion": duracion}, broker=broker)
+
+        elif opcion in ("2", "bloquear"):
+            ws_id = input("ws_id (o ALL): ").strip() or "ALL"
+            with lock:
+                ids = list(sorted(estaciones)) if ws_id == "ALL" else [ws_id]
+            prod = productor(broker)
+            try:
+                for ws in ids:
+                    bloquear_estacion(ws, prod=prod)
+            finally:
+                prod.close()
+
+        elif opcion in ("3", "activar"):
+            ws_id = input("ws_id (o ALL): ").strip() or "ALL"
+            with lock:
+                ids = list(sorted(estaciones)) if ws_id == "ALL" else [ws_id]
+            prod = productor(broker)
+            try:
+                for ws in ids:
+                    activar_estacion(ws, prod=prod)
+            finally:
+                prod.close()
+
+        elif opcion in ("4", "estado", "e"):
+            with lock:
+                imprimir_tabla()
+
+        elif opcion in ("0", "q", "salir"):
+            print("[Central] saliendo del menú")
+            break
+        else:
+            print(ayuda)
+
+
+def publicar_estado_periodico(broker, pausa=2.0):
+    """Publica ESTADO_WS cada 2 s para que los FO sepan qué estaciones están disponibles."""
+    while True:
+        try:
+            publicar_estado_ws(broker=broker)
+        except Exception as exc:  # noqa: BLE001
+            log(f"ERROR publicando ESTADO_WS: {exc}")
+        time.sleep(pausa)
 
 
 def atender_monitor(conn, addr):
@@ -314,6 +582,27 @@ def main():
         daemon=True,
     )
     consumo_kafka.start()
+
+    consumo_peticiones = threading.Thread(
+        target=consumir_peticiones,
+        args=(broker,),
+        daemon=True,
+    )
+    consumo_peticiones.start()
+
+    estado_periodico = threading.Thread(
+        target=publicar_estado_periodico,
+        args=(broker,),
+        daemon=True,
+    )
+    estado_periodico.start()
+
+    menu_thread = threading.Thread(
+        target=menu,
+        args=(broker,),
+        daemon=True,
+    )
+    menu_thread.start()
 
     iniciar_panel(estaciones, lock, log_buffer)  # panel web: http://localhost:8080 (PANEL_PORT)
 
