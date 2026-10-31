@@ -39,6 +39,7 @@ import socket
 import sys
 import threading
 import time
+from collections import deque
 from datetime import datetime
 
 from central.db import (
@@ -48,6 +49,7 @@ from central.db import (
     guardar_riego,
     set_estado,
 )
+from central.panel import iniciar_panel
 from common.kafka_utils import TOPIC_TELEMETRIA, consumidor
 from common.sockets_utils import enviar, recibir
 
@@ -70,9 +72,14 @@ conexiones = {}
 # solo se leen o se modifican con este lock cogido.
 lock = threading.Lock()
 
+# Últimas líneas del log, para el panel web (central/panel.py)
+log_buffer = deque(maxlen=50)
+
 
 def log(texto):
-    print(f"[{time.strftime('%H:%M:%S')}] {texto}")
+    linea = f"[{time.strftime('%H:%M:%S')}] {texto}"
+    print(linea)
+    log_buffer.append(linea)
 
 
 def imprimir_tabla():
@@ -307,6 +314,8 @@ def main():
         daemon=True,
     )
     consumo_kafka.start()
+
+    iniciar_panel(estaciones, lock, log_buffer)  # panel web: http://localhost:8080 (PANEL_PORT)
 
     try:
         while True:

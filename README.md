@@ -10,7 +10,7 @@ Grupo: Vlad + Abde · Tareas y fechas: tablero de Trello **SD**.
 central/                    CORE SYSTEM (en Railway)
   WM_Central.py             Central: sockets, estados, flujo de riego, menú      (Abde)
   db.py                     Acceso a SQLite                                      (Abde)
-  panel.py                  Panel de monitorización en consola                   (Vlad)
+  panel.py · panel.html     Panel web de monitorización (http://...:8080)        (Vlad)
 ws/                         WATERING STATION (laboratorio, PC 2)
   WM_WS_M.py                Monitor: programa principal                          (Abde)
   monitor_central.py        Monitor ⇄ Central (sockets)                          (Abde)
@@ -44,6 +44,32 @@ python -m fo.WM_FO <ip_broker:puerto> <id_operario>
 ```
 
 Se usa `python -m ...` desde la raíz para que los imports de `common/` funcionen.
+
+## Panel de Central
+
+WM_Central arranca sola un panel web (solo librería estándar: `http.server` + un HTML con algo de
+JS). No hace falta instalar nada ni cambiar la orden de arranque.
+
+- Abrir **http://localhost:8080** en el PC de Central, o **http://<IP_Central>:8080** desde otro PC.
+- Otro puerto: variable de entorno `PANEL_PORT` (p. ej. `PANEL_PORT=9000`; en PowerShell
+  `$env:PANEL_PORT=9000`) antes de arrancar Central.
+- La página pide `/estado` (JSON) cada segundo y se repinta sola. El punto de arriba a la derecha
+  está **verde «en línea»** si Central responde y **gris «sin conexión»** si no.
+- **AWS**: abrir el puerto TCP **8080** en el *Security Group* de la máquina de Central (igual que
+  el 5050 de los Monitor). Si Central corre en Docker: publicar el puerto (`-p 8080:8080` o
+  `ports: ["8080:8080"]` en su servicio).
+- Probar el panel sin Central ni Kafka: `python -m tests.panel_demo` (5 WS falsas, una por estado).
+
+| Color de la tarjeta | Estado | Qué significa |
+|---|---|---|
+| Verde | `DISPONIBLE` | Conectada y lista para regar |
+| Verde **parpadeando** | `REGANDO` | Regando: muestra caudal (L/min), volumen (L) y operario |
+| Rojo | `FUGA` | El Monitor ha avisado de una fuga |
+| Naranja | `FUERA_SERVICIO` | Bloqueada desde Central («Fuera de servicio») |
+| Gris | `DESCONECTADA` | Se ha cerrado el socket de su Monitor (o aún no se ha conectado) |
+
+Debajo de las tarjetas: **Últimos eventos** (las 8 últimas líneas del log de Central, las más
+nuevas arriba) y la leyenda de colores.
 
 ## Laboratorio con Docker
 
