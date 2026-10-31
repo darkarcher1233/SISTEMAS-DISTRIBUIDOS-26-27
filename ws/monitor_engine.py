@@ -15,7 +15,6 @@ QUÉ TIENE QUE TENER
         4. Imprimir por pantalla:  Engine: OK  /  Engine: KO
 
 DEPENDENCIA: from ws.monitor_central import notificar_fuga, notificar_resuelta   (de Abde)
-Mientras no existan, probar con funciones falsas que solo hagan print("FUGA").
 
 Usa common/sockets_utils.py. Mensajes: docs/PROTOCOLO.md
 
@@ -24,17 +23,12 @@ HECHO CUANDO: con el Engine en marcha, 'f' provoca un FUGA (una sola vez) y 'r' 
 
 
 import time
-import socket 
+import socket
 import common.sockets_utils
+from ws.monitor_central import notificar_fuga, notificar_resuelta
 HOST = ""
 
 
-def notificar_fuga():
-   print("FUGA detectada") 
-   
-def notificar_resuelta():
-   print("Resuelta")
-   
 def iniciar_servidor_engine(puerto, ws_id):
    my_socket = socket.socket()
    my_socket.bind((HOST, puerto)) #aceptar todo para el puerto predeterminado
@@ -42,23 +36,34 @@ def iniciar_servidor_engine(puerto, ws_id):
    
    print("Servidor de monitor ", ws_id," escucha en ", HOST, " ", puerto)
    conn, addr = my_socket.accept()
+   conn.settimeout(2) # si el Engine no contesta al HC en 2 s, cuenta como KO
    
    common.sockets_utils.enviar(conn, f"ID#{ws_id}")
    
    
    estado_anterior = "OK"
    while True:
-      common.sockets_utils.enviar(conn, "HC")
-      respuesta = common.sockets_utils.recibir(conn)
+      try:
+         common.sockets_utils.enviar(conn, "HC")
+         respuesta = common.sockets_utils.recibir(conn)
+      except (OSError, ValueError): # timeout, conexión cortada o cabecera rota
+         respuesta = None
+
       if respuesta == None:
+         # Engine caído: es una avería -> FUGA (si no se había avisado ya) y se deja de vigilar
+         print("Engine: KO (no responde)")
+         if estado_anterior == "OK":
+            notificar_fuga()
          conn.close()
-         print("no hay respuesta apagar engine")
          break
+
       if respuesta == "KO" and estado_anterior == "OK":
+         print("Engine: KO")
          notificar_fuga()
          estado_anterior = "KO"
          
       if respuesta == "OK" and estado_anterior == "KO":
+         print("Engine: OK")
          notificar_resuelta()
          estado_anterior = "OK"
          
