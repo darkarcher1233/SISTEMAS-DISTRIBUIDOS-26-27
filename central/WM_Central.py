@@ -47,6 +47,7 @@ from central.db import (
     get_estaciones,
     guardar_estacion,
     guardar_riego,
+    operario_existe,
     set_estado,
 )
 from central.panel import iniciar_panel
@@ -181,8 +182,8 @@ def desconectar_ws(conn, ws_id):
         imprimir_tabla()
 
 
-def procesar_telemetria(mensaje):
-    """Actualiza estado y valores de una estación a partir de un mensaje de Kafka."""
+def procesar_telemetria(mensaje, prod=None):
+    """Actualiza el estado local y reenvía telemetría/resumen al FO correspondiente."""
     if not isinstance(mensaje, dict):
         return False
 
@@ -205,6 +206,16 @@ def procesar_telemetria(mensaje):
             set_estado(ws_id, REGANDO)
             log(f"TELEMETRIA: {ws_id} caudal={caudal:.2f} L/min volumen={volumen:.2f} L")
             imprimir_tabla()
+
+            if prod is not None and operario:
+                mensaje_fo = {
+                    "tipo": "TELEMETRIA",
+                    "fo_id": str(operario),
+                    "ws_id": ws_id,
+                    "caudal": round(caudal, 2),
+                    "volumen": round(volumen, 3),
+                }
+                _emitir_orden(prod, mensaje_fo)
             return True
 
         if mensaje.get("tipo") == "FIN":
@@ -222,6 +233,17 @@ def procesar_telemetria(mensaje):
             set_estado(ws_id, DISPONIBLE)
             log(f"FIN: {ws_id} motivo={motivo} volumen={volumen:.2f} L")
             imprimir_tabla()
+
+            if prod is not None and operario:
+                resumen = {
+                    "tipo": "RESUMEN",
+                    "fo_id": str(operario),
+                    "ws_id": ws_id,
+                    "volumen": round(volumen, 3),
+                    "duracion": mensaje.get("duracion", 0),
+                    "motivo": motivo,
+                }
+                _emitir_orden(prod, resumen)
             return True
 
         return False
@@ -357,6 +379,20 @@ def procesar_peticion(datos, prod=None, broker: str | None = None):
                 prod.close()
         return False
 
+    if not operario_existe(fo_id.lower()):
+        mensaje = {"tipo": "DENEGADO", "fo_id": fo_id, "ws_id": ws_id, "motivo": "Operario no válido"}
+        if prod is None and broker is not None:
+            prod = productor(broker)
+            close_prod = True
+        else:
+            close_prod = False
+        try:
+            _emitir_orden(prod, mensaje)
+        finally:
+            if close_prod:
+                prod.close()
+        return False
+
     with lock:
         if ws_id not in estaciones:
             motivo = "La WS no existe"
@@ -405,14 +441,17 @@ def procesar_peticion(datos, prod=None, broker: str | None = None):
 
 def consumir_telemetria(broker):
     """Hilo consumidor del topic 'telemetria' de Kafka."""
+    prod = productor(broker)
     try:
         consumer = consumidor(broker, TOPIC_TELEMETRIA, group_id="central_telemetria")
         for mensaje in consumer:
             if not isinstance(mensaje.value, dict):
                 continue
-            procesar_telemetria(mensaje.value)
+            procesar_telemetria(mensaje.value, prod=prod)
     except Exception as exc:  # noqa: BLE001 - se trata como error de sistema en la consola
         log(f"ERROR Kafka telemetria ({broker}): {exc}")
+    finally:
+        prod.close()
 
 
 def consumir_peticiones(broker):
