@@ -3,7 +3,7 @@ WM_Central.py: CENTRAL, el cerebro del sistema (nombre obligatorio: WM_Central)
 Responsable: Abde · Semanas 1, 2 y 3
 
 USO
-    python -m central.WM_Central <puerto_escucha> <ip_broker:puerto>
+    python -m WM_Central.WM_Central <puerto_escucha> <ip_broker:puerto>
     (ejecutar desde la raíz del repo para poder importar common/)
     Panel web: http://localhost:8080  (otro puerto: variable de entorno PANEL_PORT)
 
@@ -16,7 +16,7 @@ SEMANA 1: solo sockets (Tarjeta: "WM_Central: servidor de sockets + registro de 
   - Imprimir la tabla de estados cada vez que cambie algo
 
 SEMANA 2 (Tarjetas: "SQLite..." + "estados de riego + consumo de telemetría por Kafka")
-  - Al arrancar: cargar las WS de la BD (central/db.py) -> todas DESCONECTADA
+  - Al arrancar: cargar las WS de la BD (WM_Central/db.py) -> todas DESCONECTADA
   - Cada cambio de estado -> también a la BD
   - Hilo consumidor de 'telemetria': caudal y volumen cada 1 s · FIN -> DISPONIBLE
 
@@ -25,7 +25,7 @@ SEMANA 3 (Tarjetas: "flujo de activación de riego" + "menú de órdenes")
   - Reenviar al FO la telemetría de su riego y el RESUMEN final
   - Cada ~2 s publicar ESTADO_WS (lista de WS) en 'ordenes'
   - Menú (punto 11 del enunciado): iniciar riego / bloquear / activar, a una WS o a todas (ALL)
-    -> también desde el panel web (central/panel.py + ui/panel.html)
+    -> también desde el panel web (WM_Central/panel.py + ui/panel.html)
 
 ESTADOS: DISPONIBLE · REGANDO · FUGA · FUERA_SERVICIO · DESCONECTADA
 MENSAJES: docs/PROTOCOLO.md
@@ -39,7 +39,7 @@ import threading
 import time
 from datetime import datetime
 
-from central.db import (
+from WM_Central.db import (
     crear_tablas,
     get_estaciones,
     get_operarios,
@@ -49,7 +49,7 @@ from central.db import (
     operario_existe,
     set_estado,
 )
-from central.panel import foto_estado, iniciar_panel
+from WM_Central.panel import foto_estado, iniciar_panel
 from common.kafka_utils import (
     TOPIC_ORDENES,
     TOPIC_PETICIONES,
@@ -669,7 +669,7 @@ def atender_monitor(conn, addr):
 
 def main():
     if len(sys.argv) != 3:
-        print("USO: python -m central.WM_Central <puerto_escucha> <ip_broker:puerto>")
+        print("USO: python -m WM_Central.WM_Central <puerto_escucha> <ip_broker:puerto>")
         sys.exit(1)
 
     try:
@@ -678,7 +678,7 @@ def main():
         if not 0 < puerto < 65536 or ip_broker == "" or not 0 < int(puerto_broker) < 65536:
             raise ValueError
     except ValueError:
-        print("Argumentos incorrectos. Ejemplo: python -m central.WM_Central 5050 127.0.0.1:9092")
+        print("Argumentos incorrectos. Ejemplo: python -m WM_Central.WM_Central 5050 127.0.0.1:9092")
         sys.exit(1)
     broker = sys.argv[2]
     info["broker"] = broker

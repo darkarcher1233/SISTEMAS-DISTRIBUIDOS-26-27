@@ -1,7 +1,7 @@
 """
 sockets_utils.py: funciones comunes para enviar y recibir mensajes por SOCKETS
 Responsable: Vlad · Semana 1 · Tarjeta Trello: "Estructura del repo + common/sockets_utils.py"
-Lo usan: WM_Central, ws/monitor_central.py, ws/monitor_engine.py, WM_WS_E
+Lo usan: WM_Central, WM_WS/monitor_central.py, WM_WS/monitor_engine.py, WM_WS_E
 
 QUÉ TIENE QUE TENER
   - Constantes: HEADER = 64, FORMAT = "utf-8"

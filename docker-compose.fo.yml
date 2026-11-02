@@ -7,7 +7,7 @@
 #
 # El FO solo usa Kafka (no sockets): basta con ${KAFKA_BROKER} del .env.
 # Pantallas web: FO1 http://localhost:8300 · FO2 http://localhost:8301
-# Los ficheros de fo/peticiones/ van dentro de la imagen (COPY . .).
+# Los ficheros de WM_FO/peticiones/ van dentro de la imagen (COPY . .).
 
 name: sd-fo   # nombre de proyecto propio: no se mezcla con el Kafka de docker-compose.yml
 
@@ -17,7 +17,7 @@ services:
     image: sd-app
     container_name: fo1
     ports: ["8300:8300"]   # pantalla web
-    command: ["python", "-m", "fo.WM_FO", "${KAFKA_BROKER}", "FO1"]
+    command: ["python", "-m", "WM_FO.WM_FO", "${KAFKA_BROKER}", "FO1"]
     restart: on-failure
     stdin_open: true   # menú con input()
     tty: true
@@ -26,7 +26,7 @@ services:
     image: sd-app
     container_name: fo2
     ports: ["8301:8300"]   # pantalla web
-    command: ["python", "-m", "fo.WM_FO", "${KAFKA_BROKER}", "FO2"]
+    command: ["python", "-m", "WM_FO.WM_FO", "${KAFKA_BROKER}", "FO2"]
     restart: on-failure
     stdin_open: true
     tty: true

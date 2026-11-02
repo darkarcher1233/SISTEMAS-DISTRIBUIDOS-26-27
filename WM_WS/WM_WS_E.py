@@ -3,7 +3,7 @@ WM_WS_E.py: ENGINE de la Watering Station (nombre obligatorio: WM_WS_E)
 Responsable: Vlad · Semanas 1 (sockets) y 2 (riego + Kafka)
 
 USO
-    python -m ws.WM_WS_E <ip_broker:puerto> <ip_monitor:puerto>
+    python -m WM_WS.WM_WS_E <ip_broker:puerto> <ip_monitor:puerto>
     Pantalla web: la URL sale por consola (otro puerto: variable de entorno WEB_PORT)
 
 SOCKETS (semana 1)
@@ -410,7 +410,7 @@ def menu(broker: str):
 # ---------------------- Arranque ---------------------------------------------
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        print("USO: python -m ws.WM_WS_E <ip_broker:puerto> <ip_monitor:puerto>")
+        print("USO: python -m WM_WS.WM_WS_E <ip_broker:puerto> <ip_monitor:puerto>")
         sys.exit(1)
 
     broker = sys.argv[1]  # cadena completa host:puerto, la pasamos tal cual a Kafka
@@ -418,7 +418,7 @@ if __name__ == "__main__":
         ip_monitor, puerto_texto = sys.argv[2].rsplit(":", 1)
         puerto_monitor = int(puerto_texto)
     except ValueError:
-        print("Argumentos incorrectos. Ejemplo: python -m ws.WM_WS_E 127.0.0.1:9092 127.0.0.1:6000")
+        print("Argumentos incorrectos. Ejemplo: python -m WM_WS.WM_WS_E 127.0.0.1:9092 127.0.0.1:6000")
         sys.exit(1)
     monitor_dir = f"{ip_monitor}:{puerto_monitor}"
 

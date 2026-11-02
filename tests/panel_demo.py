@@ -11,7 +11,7 @@ Los botones del panel funcionan sobre los datos falsos (regar / bloquear / activ
 import threading
 import time
 
-from central.panel import foto_estado, iniciar_panel
+from WM_Central.panel import foto_estado, iniciar_panel
 from common.web import Registro
 
 ahora = time.time()

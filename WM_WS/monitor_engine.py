@@ -1,7 +1,7 @@
 """
 monitor_engine.py: mitad del MONITOR que habla con el ENGINE (sockets + health check)
 Responsable: Vlad · Semana 1 · Tarjeta Trello: "WM_WS_M, parte Engine"
-Lo usa: ws/WM_WS_M.py (lo lanza en un hilo)
+Lo usa: WM_WS/WM_WS_M.py (lo lanza en un hilo)
 
 QUÉ HACE
   - iniciar_servidor_engine(puerto, ws_id, ubicacion) -> None
@@ -17,7 +17,7 @@ QUÉ HACE
         4. Imprime por pantalla:  Engine: OK  /  Engine: KO
   - estado: dict para la pantalla web del Monitor (salud, motivo, Engine conectado)
 
-DEPENDENCIA: from ws.monitor_central import notificar_fuga, notificar_resuelta   (de Abde)
+DEPENDENCIA: from WM_WS.monitor_central import notificar_fuga, notificar_resuelta   (de Abde)
 Usa common/sockets_utils.py. Mensajes: docs/PROTOCOLO.md
 """
 
@@ -25,8 +25,8 @@ import socket
 import time
 
 import common.sockets_utils
-from ws import monitor_central
-from ws.monitor_central import notificar_fuga, notificar_resuelta
+from WM_WS import monitor_central
+from WM_WS.monitor_central import notificar_fuga, notificar_resuelta
 
 HOST = ""
 

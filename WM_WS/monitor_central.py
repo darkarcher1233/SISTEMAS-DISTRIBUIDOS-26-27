@@ -1,7 +1,7 @@
 """
 monitor_central.py: mitad del MONITOR que habla con CENTRAL (sockets)
 Responsable: Abde · Semana 1 · Tarjeta Trello: "WM_WS_M, parte Central"
-Lo usan: ws/WM_WS_M.py (programa principal) y ws/monitor_engine.py (de Vlad)
+Lo usan: WM_WS/WM_WS_M.py (programa principal) y WM_WS/monitor_engine.py (de Vlad)
 
 QUÉ TIENE
   - registrar(ip_central, puerto_central, ws_id, ubicacion) -> bool

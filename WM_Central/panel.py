@@ -1,7 +1,7 @@
 """
 panel.py: panel WEB de CENTRAL (solo librería estándar)
 Responsable: Vlad · Tarjeta Trello: "[Vlad] Panel de CENTRAL"
-Lo usa: central/WM_Central.py -> iniciar_panel(estado_fn, acciones)
+Lo usa: WM_Central/WM_Central.py -> iniciar_panel(estado_fn, acciones)
 
 CÓMO FUNCIONA (servidor común en common/web.py, página en ui/panel.html)
   - GET  /             -> ui/panel.html

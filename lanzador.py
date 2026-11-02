@@ -6,7 +6,7 @@ USO (desde la raíz del repo):
     abrir http://localhost:8000       (otro puerto: variable de entorno LANZADOR_PORT)
 
 Qué hace
-  - Cada módulo es un proceso hijo con su comando de siempre (python -m central.WM_Central ...),
+  - Cada módulo es un proceso hijo con su comando de siempre (python -m WM_Central.WM_Central ...),
     sin teclado: se maneja desde su pantalla web, que el lanzador enseña dentro de la suya.
   - CENTRAL local (sockets 5050, panel 8080) o remota (solo se usan sus direcciones).
   - Estaciones: Monitor + Engine de cada una.  Operarios: un WM_FO por operario.
@@ -146,24 +146,24 @@ def crear_procesos():
     if "central" not in procesos:
         procesos["central"] = Proceso(
             "central", "CENTRAL", PUERTO_PANEL,
-            lambda: ["-m", "central.WM_Central", str(PUERTO_SOCKETS), ajustes["broker"]],
+            lambda: ["-m", "WM_Central.WM_Central", str(PUERTO_SOCKETS), ajustes["broker"]],
             {"PANEL_PORT": str(PUERTO_PANEL)})
     for e in ajustes["estaciones"]:
         ws_id, n = e["id"], e["n"]
         if f"ws:{ws_id}:monitor" not in procesos:
             procesos[f"ws:{ws_id}:monitor"] = Proceso(
                 f"ws:{ws_id}:monitor", f"Monitor {ws_id}", BASE_WEB_MONITOR + n,
-                lambda e=e: ["-m", "ws.WM_WS_M", str(BASE_ENGINE + e["n"]), direccion_central(), e["id"], e["ubicacion"]],
+                lambda e=e: ["-m", "WM_WS.WM_WS_M", str(BASE_ENGINE + e["n"]), direccion_central(), e["id"], e["ubicacion"]],
                 {"WEB_PORT": str(BASE_WEB_MONITOR + n)})
             procesos[f"ws:{ws_id}:engine"] = Proceso(
                 f"ws:{ws_id}:engine", f"Engine {ws_id}", BASE_WEB_ENGINE + n,
-                lambda e=e: ["-m", "ws.WM_WS_E", ajustes["broker"], f"127.0.0.1:{BASE_ENGINE + e['n']}"],
+                lambda e=e: ["-m", "WM_WS.WM_WS_E", ajustes["broker"], f"127.0.0.1:{BASE_ENGINE + e['n']}"],
                 {"WEB_PORT": str(BASE_WEB_ENGINE + n)})
     for o in ajustes["operarios"]:
         if f"fo:{o['id']}" not in procesos:
             procesos[f"fo:{o['id']}"] = Proceso(
                 f"fo:{o['id']}", f"Operario {o['id']}", BASE_WEB_FO + o["n"],
-                lambda o=o: ["-m", "fo.WM_FO", ajustes["broker"], o["id"]],
+                lambda o=o: ["-m", "WM_FO.WM_FO", ajustes["broker"], o["id"]],
                 {"WEB_PORT": str(BASE_WEB_FO + o["n"])})
 
 

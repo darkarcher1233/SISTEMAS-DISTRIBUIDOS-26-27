@@ -1,6 +1,6 @@
 import pytest
 
-from central import db
+from WM_Central import db
 
 
 @pytest.fixture(autouse=True)

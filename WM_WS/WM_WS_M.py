@@ -4,7 +4,7 @@ Responsable: Abde (este fichero y monitor_central.py) · Vlad (monitor_engine.py
 Semana 1 · Tarjeta Trello: "WM_WS_M, parte Central"
 
 USO
-    python -m ws.WM_WS_M <puerto_para_engine> <ip_central:puerto> <id_ws> [ubicacion]
+    python -m WM_WS.WM_WS_M <puerto_para_engine> <ip_central:puerto> <id_ws> [ubicacion]
     Pantalla web: la URL sale por consola (otro puerto: variable de entorno WEB_PORT)
 
 QUÉ HACE (solo coordinar: la lógica está en los otros dos ficheros)
@@ -24,7 +24,7 @@ import threading
 import time
 
 from common.web import Registro, iniciar_web
-from ws import monitor_central, monitor_engine
+from WM_WS import monitor_central, monitor_engine
 
 eventos = Registro()
 
@@ -44,7 +44,7 @@ def avisar(texto):
 
 def main():
     if len(sys.argv) not in (4, 5):
-        print("USO: python -m ws.WM_WS_M <puerto_engine> <ip_central:puerto> <id_ws> [ubicacion]")
+        print("USO: python -m WM_WS.WM_WS_M <puerto_engine> <ip_central:puerto> <id_ws> [ubicacion]")
         sys.exit(1)
 
     try:
@@ -54,7 +54,7 @@ def main():
         if not 0 < puerto_engine < 65536 or not ip_central or not 0 < puerto_central < 65536:
             raise ValueError
     except ValueError:
-        print("Argumentos incorrectos. Ejemplo: python -m ws.WM_WS_M 6000 127.0.0.1:5050 WS1 Parque")
+        print("Argumentos incorrectos. Ejemplo: python -m WM_WS.WM_WS_M 6000 127.0.0.1:5050 WS1 Parque")
         sys.exit(1)
 
     ws_id = sys.argv[3]

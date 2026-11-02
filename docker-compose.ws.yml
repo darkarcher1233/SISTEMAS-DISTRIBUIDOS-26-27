@@ -21,7 +21,7 @@ services:
     image: sd-app
     container_name: ws1_m
     ports: ["8100:8100"]   # pantalla web
-    command: ["python", "-m", "ws.WM_WS_M", "6000", "${CENTRAL}", "WS1", "Parque Norte"]
+    command: ["python", "-m", "WM_WS.WM_WS_M", "6000", "${CENTRAL}", "WS1", "Parque Norte"]
     extra_hosts:
       - "host.docker.internal:host-gateway"   # para Linux; en Docker Desktop ya existe
     restart: on-failure
@@ -30,7 +30,7 @@ services:
     image: sd-app
     container_name: ws1_e
     ports: ["8200:8200"]   # pantalla web
-    command: ["python", "-m", "ws.WM_WS_E", "${KAFKA_BROKER}", "ws1_m:6000"]
+    command: ["python", "-m", "WM_WS.WM_WS_E", "${KAFKA_BROKER}", "ws1_m:6000"]
     depends_on:
       - ws1_m
     restart: on-failure
@@ -41,7 +41,7 @@ services:
     image: sd-app
     container_name: ws2_m
     ports: ["8101:8100"]   # pantalla web
-    command: ["python", "-m", "ws.WM_WS_M", "6000", "${CENTRAL}", "WS2", "Parque Sur"]
+    command: ["python", "-m", "WM_WS.WM_WS_M", "6000", "${CENTRAL}", "WS2", "Parque Sur"]
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: on-failure
@@ -50,7 +50,7 @@ services:
     image: sd-app
     container_name: ws2_e
     ports: ["8201:8200"]   # pantalla web
-    command: ["python", "-m", "ws.WM_WS_E", "${KAFKA_BROKER}", "ws2_m:6000"]
+    command: ["python", "-m", "WM_WS.WM_WS_E", "${KAFKA_BROKER}", "ws2_m:6000"]
     depends_on:
       - ws2_m
     restart: on-failure

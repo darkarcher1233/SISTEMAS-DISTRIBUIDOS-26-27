@@ -3,7 +3,7 @@ central_falsa_fo.py: CENTRAL FALSA para probar WM_FO sin la Central real (solo K
 
 USO (desde la raíz del repo, con Kafka en marcha):
     python -m tests.central_falsa_fo <ip_broker:puerto>
-    python -m fo.WM_FO <ip_broker:puerto> FO1      (en otras terminales, FO1 y FO2)
+    python -m WM_FO.WM_FO <ip_broker:puerto> FO1      (en otras terminales, FO1 y FO2)
 
 Conoce WS1 y WS2. Responde a cada PETICION según docs/PROTOCOLO.md:
   - WS que no existe o no DISPONIBLE -> DENEGADO

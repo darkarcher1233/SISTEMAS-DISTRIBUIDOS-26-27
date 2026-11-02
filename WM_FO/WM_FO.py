@@ -4,7 +4,7 @@ Responsable: Vlad · Semana 3 · Tarjetas: "WM_FO: modo manual" + "WM_FO: petici
 Solo usa KAFKA (no tiene sockets).
 
 USO
-    python -m fo.WM_FO <ip_broker:puerto> <id_operario>
+    python -m WM_FO.WM_FO <ip_broker:puerto> <id_operario>
     Pantalla web: la URL sale por consola (otro puerto: variable de entorno WEB_PORT)
 
 QUÉ HACE
@@ -15,7 +15,7 @@ QUÉ HACE
         AUTORIZADO · DENEGADO (+motivo) · TELEMETRIA de su WS · RESUMEN final
         (+ aviso claro si el riego acaba por FUGA o BLOQUEO)
   - Ver WS disponibles: guarda el último ESTADO_WS que publica Central y lo muestra
-  - Modo fichero (fo/peticiones/*.txt, una línea "ws_id;duracion"):
+  - Modo fichero (WM_FO/peticiones/*.txt, una línea "ws_id;duracion"):
         envía la primera -> espera a que termine (bien o mal) -> espera 4 s -> la siguiente
 
 HECHO CUANDO: 2 FO piden riego a la vez y cada uno ve solo lo suyo
@@ -311,7 +311,7 @@ def ejecutar_peticiones(prod, nombre: str, peticiones: list[tuple[str, int]]):
 
 
 def modo_fichero(prod):
-    por_defecto = os.path.join("fo", "peticiones", f"{fo_id.lower()}.txt")
+    por_defecto = os.path.join("WM_FO", "peticiones", f"{fo_id.lower()}.txt")
     ruta = input(f"fichero [{por_defecto}]: ").strip() or por_defecto
     try:
         peticiones = leer_fichero(ruta)
@@ -411,11 +411,11 @@ def menu(prod):
 def main():
     global fo_id, broker
     if len(sys.argv) != 3:
-        print("USO: python -m fo.WM_FO <ip_broker:puerto> <id_operario>")
+        print("USO: python -m WM_FO.WM_FO <ip_broker:puerto> <id_operario>")
         sys.exit(1)
     broker, fo_id = sys.argv[1], sys.argv[2].strip()
     if ":" not in broker or not fo_id:
-        print("Argumentos incorrectos. Ejemplo: python -m fo.WM_FO 127.0.0.1:9092 FO1")
+        print("Argumentos incorrectos. Ejemplo: python -m WM_FO.WM_FO 127.0.0.1:9092 FO1")
         sys.exit(1)
 
     iniciar_web("operario.html", estado_web, {"solicitar": web_solicitar, "fichero": web_fichero},

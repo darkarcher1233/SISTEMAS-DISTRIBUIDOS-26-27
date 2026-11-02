@@ -36,7 +36,7 @@ def esperar_servidor(proceso, puerto, nombre, timeout=10):
 def iniciar_engine(puerto, ws_id, monitor):
     limite = time.monotonic() + 10
     comando = [
-        sys.executable, "-u", "-m", "ws.WM_WS_E",
+        sys.executable, "-u", "-m", "WM_WS.WM_WS_E",
         BROKER_DE_PRUEBA, f"127.0.0.1:{puerto}",
     ]
     while time.monotonic() < limite:
@@ -87,7 +87,7 @@ def main():
     try:
         print("Iniciando WM_Central...")
         procesos["central"] = subprocess.Popen(
-            [sys.executable, "-u", "-m", "central.WM_Central", str(central_port), BROKER_DE_PRUEBA],
+            [sys.executable, "-u", "-m", "WM_Central.WM_Central", str(central_port), BROKER_DE_PRUEBA],
             cwd=ROOT,
             env=entorno,
         )
@@ -96,7 +96,7 @@ def main():
         print("Iniciando WM_WS_M...")
         procesos["monitor"] = subprocess.Popen(
             [
-                sys.executable, "-u", "-m", "ws.WM_WS_M", str(engine_port),
+                sys.executable, "-u", "-m", "WM_WS.WM_WS_M", str(engine_port),
                 f"127.0.0.1:{central_port}", "WS-DEMO", "Parque de Prueba",
             ],
             cwd=ROOT,

@@ -2,7 +2,7 @@
 
 Un punto por cada fila de `Practica_SD_WaterManagement_2026_2027_GuiaCorreccion.pdf`, en su orden.
 Estado: **Cumple** · **Parcial** · **No cumple**. «Fase» = en qué fase del plan se arregla.
-Rutas de la rama `release1-final` ANTES de la fase 1 (después: `central/` → `WM_Central/`, `ws/` → `WM_WS/`, `fo/` → `WM_FO/`).
+Desde la fase 1 las carpetas son `WM_Central/`, `WM_WS/` y `WM_FO/` (antes `central/`, `ws/`, `fo/`).
 
 > Frase que manda: **«LA PRÁCTICA NO ES EVALUABLE si no se logra desplegar el escenario mínimo»**
 > (parte Cloud en AWS + al menos dos PCs con WM_FO y WM_WS, todo conectado). Prioridad 1 = fase 2.
@@ -12,7 +12,7 @@ Rutas de la rama `release1-final` ANTES de la fase 1 (después: `central/` → `
 | # | Punto de la guía | Estado | Dónde está | Qué falta | Fase |
 |---|---|---|---|---|---|
 | 1.1 | Parte Cloud (WM_Central + Kafka + SQLite) ya desplegada en AWS; FO y WS en el laboratorio; todo sin IDE | **No cumple** | En la EC2 solo hay Kafka (51.20.108.192:9092). Central solo se ha ejecutado en local (`python -m central.WM_Central`) | `docker-compose.cloud.yml` (Kafka + Central + volumen SQLite), reglas del security group 5050/8080, pasos en la EC2. CI/CD GitHub → AWS (lo pide el enunciado, pág. 13) | 2 |
-| 1.2 | Repo en GitHub con estructura común: carpetas `WM_Central`, `WM_WS`, `WM_FO`, `prompts`, y `Readme.md` + `Nombres.txt`; acceso al profesor | **No cumple** | Carpetas `central/`, `ws/`, `fo/`, `prompts_ia/`; fichero `README.md`. `prompts_ia/` **solo tiene un README, no hay prompts** | Renombrar con `git mv`, crear `Nombres.txt`, `Readme.md`. **Copiar los prompts reales** (vuestra tarea). Dar acceso al profesor en GitHub (vuestra tarea) | 1 |
+| 1.2 | Repo en GitHub con estructura común: carpetas `WM_Central`, `WM_WS`, `WM_FO`, `prompts`, y `Readme.md` + `Nombres.txt`; acceso al profesor | **Parcial** | Hecho en la fase 1: `WM_Central/`, `WM_WS/`, `WM_FO/`, `prompts/`, `Readme.md`, `Nombres.txt` | **Vosotros:** copiar los prompts reales a `prompts/`, poner los apellidos en `Nombres.txt` y dar acceso al profesor en GitHub | 1 ✔ |
 | 1.3 | Tantas instancias de cada módulo como pida el profesor, en la misma o en distintas máquinas; parar una de golpe ("crash") | **Parcial** | Los compose del lab tienen 2 WS y 2 FO fijos (`docker-compose.ws.yml`, `docker-compose.fo.yml`). Los módulos aguantan varias instancias (puertos web libres automáticos, `common/web.py: iniciar_web`) | Forma documentada y probada de lanzar la WS nº N o el FO nº N con Docker en caliente (comandos `docker run` parametrizados o script) | 2 y 5 |
 
 ## 2. Funcionamiento base (3 puntos)

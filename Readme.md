@@ -7,16 +7,16 @@ Grupo: Vlad + Abde · Tareas y fechas: tablero de Trello **SD**.
 ## Estructura
 
 ```
-central/                    CORE SYSTEM (en Railway)
+WM_Central/                 CORE SYSTEM (en la nube: AWS)
   WM_Central.py             Central: sockets, estados, flujo de riego, menú      (Abde)
   db.py                     Acceso a SQLite                                      (Abde)
   panel.py                  Panel web de Central (http://...:8080)               (Vlad)
-ws/                         WATERING STATION (laboratorio, PC 2)
+WM_WS/                      WATERING STATION (laboratorio, PC 2)
   WM_WS_M.py                Monitor: programa principal                          (Abde)
   monitor_central.py        Monitor ⇄ Central (sockets)                          (Abde)
   monitor_engine.py         Monitor ⇄ Engine (sockets + health check)            (Vlad)
   WM_WS_E.py                Engine: health check, riego, telemetría              (Vlad)
-fo/                         FIELD OPERATOR (laboratorio, PC 1)
+WM_FO/                      FIELD OPERATOR (laboratorio, PC 1)
   WM_FO.py                  Aplicación del operario                              (Vlad)
   peticiones/               Ficheros de peticiones para las pruebas
 ui/                         Páginas web de todos los módulos (HTML + comun.css/js)
@@ -28,8 +28,10 @@ common/                     Código compartido
 docs/
   PROTOCOLO.md              Mensajes de sockets y Kafka  <- LEER PRIMERO
   capturas/                 Capturas para la memoria
+  CHECKLIST_CORRECCION.md   Cada punto de la guía de corrección y su estado
   enunciado/                PDF y tutoriales (no se sube a GitHub)
-prompts_ia/                 Prompts de IA usados (obligatorio)
+prompts/                    Prompts de IA usados (obligatorio)
+Nombres.txt                 Nombres de los integrantes del grupo
 ejemplos/                   Ejemplos de sockets de clase (no se entregan)
 Dockerfile                  Imagen única para todos los módulos
 docker-compose.yml          Kafka en local (desarrollo)
@@ -40,10 +42,10 @@ docker-compose.fo.yml       Laboratorio PC 1: 2 FO
 ## Cómo ejecutar (desde la raíz del repo)
 
 ```
-python -m central.WM_Central <puerto> <ip_broker:puerto>
-python -m ws.WM_WS_M <puerto_engine> <ip_central:puerto> <id_ws> [ubicacion]
-python -m ws.WM_WS_E <ip_broker:puerto> <ip_monitor:puerto>
-python -m fo.WM_FO <ip_broker:puerto> <id_operario>
+python -m WM_Central.WM_Central <puerto> <ip_broker:puerto>
+python -m WM_WS.WM_WS_M <puerto_engine> <ip_central:puerto> <id_ws> [ubicacion]
+python -m WM_WS.WM_WS_E <ip_broker:puerto> <ip_monitor:puerto>
+python -m WM_FO.WM_FO <ip_broker:puerto> <id_operario>
 ```
 
 Se usa `python -m ...` desde la raíz para que los imports de `common/` funcionen.
@@ -114,7 +116,7 @@ pública de AWS cuando se despliegue allí.
 ### PC 2: Watering Stations
 
 ```
-python -m central.WM_Central 5050 51.20.108.192:9092           # antes, donde esté Central
+python -m WM_Central.WM_Central 5050 51.20.108.192:9092           # antes, donde esté Central
 docker compose -f docker-compose.ws.yml up -d --build          # construir y arrancar
 docker compose -f docker-compose.ws.yml ps                     # estado de los contenedores
 docker compose -f docker-compose.ws.yml logs -f ws1_m          # salida del Monitor WS1

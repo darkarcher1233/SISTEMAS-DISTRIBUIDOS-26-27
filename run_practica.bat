@@ -28,34 +28,34 @@ call :wait_listener 9092 Kafka
 if errorlevel 1 goto :error
 
 REM Central
-start "Central" cmd /k "python -m central.WM_Central 5050 127.0.0.1:9092"
+start "Central" cmd /k "python -m WM_Central.WM_Central 5050 127.0.0.1:9092"
 call :wait_listener 5050 Central
 if errorlevel 1 goto :error
 
 REM Cada Monitor debe registrarse y abrir su puerto antes de iniciar su Engine
-start "WS1 Monitor" cmd /k python -m ws.WM_WS_M 8001 127.0.0.1:5050 WS1 "Parque Norte"
+start "WS1 Monitor" cmd /k python -m WM_WS.WM_WS_M 8001 127.0.0.1:5050 WS1 "Parque Norte"
 call :wait_listener 8001 "Monitor WS1"
 if errorlevel 1 goto :error
-start "WS1 Engine" cmd /k "python -m ws.WM_WS_E 127.0.0.1:9092 127.0.0.1:8001"
+start "WS1 Engine" cmd /k "python -m WM_WS.WM_WS_E 127.0.0.1:9092 127.0.0.1:8001"
 
-start "WS2 Monitor" cmd /k python -m ws.WM_WS_M 8002 127.0.0.1:5050 WS2 "Parque Sur"
+start "WS2 Monitor" cmd /k python -m WM_WS.WM_WS_M 8002 127.0.0.1:5050 WS2 "Parque Sur"
 call :wait_listener 8002 "Monitor WS2"
 if errorlevel 1 goto :error
-start "WS2 Engine" cmd /k "python -m ws.WM_WS_E 127.0.0.1:9092 127.0.0.1:8002"
+start "WS2 Engine" cmd /k "python -m WM_WS.WM_WS_E 127.0.0.1:9092 127.0.0.1:8002"
 
 REM Los FO arrancan cuando Kafka y Central ya estan disponibles
-start "FO1" cmd /k "python -m fo.WM_FO 127.0.0.1:9092 FO1"
-start "FO2" cmd /k "python -m fo.WM_FO 127.0.0.1:9092 FO2"
+start "FO1" cmd /k "python -m WM_FO.WM_FO 127.0.0.1:9092 FO1"
+start "FO2" cmd /k "python -m WM_FO.WM_FO 127.0.0.1:9092 FO2"
 
 echo.
 echo Todas las terminales se han abierto.
 echo.
 echo Acciones disponibles:
 echo   - Kafka: docker compose up
-echo   - Central: python -m central.WM_Central 5050 127.0.0.1:9092
-echo   - WS1: python -m ws.WM_WS_M 8001 127.0.0.1:5050 WS1 "Parque Norte"
-echo   - WS2: python -m ws.WM_WS_M 8002 127.0.0.1:5050 WS2 "Parque Sur"
-echo   - FO1/FO2: python -m fo.WM_FO 127.0.0.1:9092 FO1 / FO2
+echo   - Central: python -m WM_Central.WM_Central 5050 127.0.0.1:9092
+echo   - WS1: python -m WM_WS.WM_WS_M 8001 127.0.0.1:5050 WS1 "Parque Norte"
+echo   - WS2: python -m WM_WS.WM_WS_M 8002 127.0.0.1:5050 WS2 "Parque Sur"
+echo   - FO1/FO2: python -m WM_FO.WM_FO 127.0.0.1:9092 FO1 / FO2
 echo.
 
 pause

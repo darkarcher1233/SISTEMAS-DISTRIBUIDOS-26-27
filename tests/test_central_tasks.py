@@ -1,5 +1,5 @@
-from central import db
-from central.WM_Central import (
+from WM_Central import db
+from WM_Central.WM_Central import (
     REGANDO,
     DISPONIBLE,
     DESCONECTADA,

@@ -28,11 +28,11 @@ Implementación: `common/sockets_utils.py`.
 
 | Función | Fichero | Quién la escribe | Quién la llama |
 |---|---|---|---|
-| `registrar(ip, puerto, ws_id, ubicacion)` | `ws/monitor_central.py` | Abde | `WM_WS_M.py` |
-| `notificar_fuga()` | `ws/monitor_central.py` | Abde | `monitor_engine.py` |
-| `notificar_resuelta()` | `ws/monitor_central.py` | Abde | `monitor_engine.py` |
-| `iniciar_servidor_engine(puerto, ws_id, ubicacion)` | `ws/monitor_engine.py` | Vlad | `WM_WS_M.py` |
-| `mantener_conexion(ip, puerto, ws_id, ubicacion)` | `ws/monitor_central.py` | Abde | `WM_WS_M.py` (se re-registra si Central se cae) |
+| `registrar(ip, puerto, ws_id, ubicacion)` | `WM_WS/monitor_central.py` | Abde | `WM_WS_M.py` |
+| `notificar_fuga()` | `WM_WS/monitor_central.py` | Abde | `monitor_engine.py` |
+| `notificar_resuelta()` | `WM_WS/monitor_central.py` | Abde | `monitor_engine.py` |
+| `iniciar_servidor_engine(puerto, ws_id, ubicacion)` | `WM_WS/monitor_engine.py` | Vlad | `WM_WS_M.py` |
+| `mantener_conexion(ip, puerto, ws_id, ubicacion)` | `WM_WS/monitor_central.py` | Abde | `WM_WS_M.py` (se re-registra si Central se cae) |
 
 ## 2. Kafka (Semana 2: completar entonces)
 
