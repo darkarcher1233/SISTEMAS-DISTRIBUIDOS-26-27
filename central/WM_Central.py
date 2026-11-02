@@ -186,6 +186,8 @@ def cambiar_estado(conn_o_ws_id, ws_id=None, nuevo_estado=None):
 
         ws = estaciones[ws_id]
         estado_anterior = ws["estado"]
+        if nuevo_estado == estado_anterior == FUGA:
+            return True   # ya se sabía (p. ej. por el FIN del riego): no se repite
         if nuevo_estado in ESTADOS:
             ws["estado"] = nuevo_estado
             if nuevo_estado == DISPONIBLE:
@@ -269,10 +271,13 @@ def procesar_telemetria(mensaje, prod=None):
             _limpiar_riego(ws)
             ws["volumen"] = volumen
             ws["ultimo_riego"] = time.time()
-            # Si el riego acabó por FUGA o BLOQUEO la WS se queda en ese estado
+            # Si el riego acabó por FUGA o BLOQUEO la WS se queda en ese estado. El FIN por FUGA
+            # suele llegar (Kafka) antes que el aviso del Monitor (socket): se pasa ya a FUGA
             if ws["estado"] == REGANDO:
-                ws["estado"] = DISPONIBLE
-                set_estado(ws_id, DISPONIBLE)
+                ws["estado"] = FUGA if motivo == "FUGA" else DISPONIBLE
+                if motivo == "FUGA":
+                    ws["motivo_fuga"] = "Fuga detectada durante el riego"
+                set_estado(ws_id, ws["estado"])
             log(f"FIN: {ws_id} motivo={motivo} volumen={volumen:.2f} L -> {ws['estado']}")
             imprimir_tabla()
 

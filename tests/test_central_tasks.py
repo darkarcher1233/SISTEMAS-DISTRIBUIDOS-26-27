@@ -218,3 +218,15 @@ def test_riego_ordenado_desde_central_no_necesita_operario_de_la_bd():
     assert ok is True
     assert estaciones["ws-c"]["estado"] == REGANDO
     assert prod.messages[0][1]["tipo"] == "REGAR"
+
+
+def test_fin_por_fuga_deja_la_ws_en_fuga_aunque_el_monitor_avise_despues():
+    estaciones.clear()
+    estaciones["ws-f"] = {"ubicacion": "Huerto", "estado": DISPONIBLE, "caudal": 0.0,
+                          "volumen": 0.0, "operario": None}
+    procesar_telemetria({"tipo": "TELEMETRIA", "ws_id": "ws-f", "caudal": 20.0, "volumen": 1.0, "operario": "FO1"})
+    procesar_telemetria({"tipo": "FIN", "ws_id": "ws-f", "volumen": 1.2, "duracion": 4.0, "motivo": "FUGA"})
+    assert estaciones["ws-f"]["estado"] == "FUGA"
+
+    cambiar_estado("ws-f", "FUGA")      # aviso del Monitor que llega después
+    assert estaciones["ws-f"]["estado"] == "FUGA"
