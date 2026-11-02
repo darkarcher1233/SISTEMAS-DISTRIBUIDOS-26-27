@@ -1,7 +1,8 @@
 # Checklist de la guía de corrección (Release 1)
 
 Un punto por cada fila de `Practica_SD_WaterManagement_2026_2027_GuiaCorreccion.pdf`, en su orden.
-Estado: **Cumple** · **Parcial** · **No cumple**. «Fase» = en qué fase del plan se arregla.
+Estado: **Cumple** · **Parcial** · **No cumple**. «Fase» = en qué fase del plan se arregló.
+**Estado final (fase 5):** todo el código cumple; lo que queda está en «Pendiente de vosotros».
 Desde la fase 1 las carpetas son `WM_Central/`, `WM_WS/` y `WM_FO/` (antes `central/`, `ws/`, `fo/`).
 
 > Frase que manda: **«LA PRÁCTICA NO ES EVALUABLE si no se logra desplegar el escenario mínimo»**
@@ -13,15 +14,15 @@ Desde la fase 1 las carpetas son `WM_Central/`, `WM_WS/` y `WM_FO/` (antes `cent
 |---|---|---|---|---|---|
 | 1.1 | Parte Cloud (WM_Central + Kafka + SQLite) ya desplegada en AWS; FO y WS en el laboratorio; todo sin IDE | **Parcial** | Fase 2: `docker-compose.cloud.yml` (Kafka KRaft con listeners INTERNAL/EXTERNAL + Central + volumen SQLite), `deploy/deploy_ec2.sh`, `.github/workflows/deploy.yml`, `docs/DESPLIEGUE_AWS.md`. Probado en local con la IP de red del PC como `PUBLIC_IP` | **Vosotros:** seguir `docs/DESPLIEGUE_AWS.md` (security group 5050/8080, swap, desplegar) y comprobar desde el laboratorio | 2 ✔ (falta AWS) |
 | 1.2 | Repo en GitHub con estructura común: carpetas `WM_Central`, `WM_WS`, `WM_FO`, `prompts`, y `Readme.md` + `Nombres.txt`; acceso al profesor | **Parcial** | Hecho en la fase 1: `WM_Central/`, `WM_WS/`, `WM_FO/`, `prompts/`, `Readme.md`, `Nombres.txt` | **Vosotros:** copiar los prompts reales a `prompts/`, poner los apellidos en `Nombres.txt` y dar acceso al profesor en GitHub | 1 ✔ |
-| 1.3 | Tantas instancias de cada módulo como pida el profesor, en la misma o en distintas máquinas; parar una de golpe ("crash") | **Parcial** | Los compose del lab tienen 2 WS y 2 FO fijos (`docker-compose.ws.yml`, `docker-compose.fo.yml`). Los módulos aguantan varias instancias (puertos web libres automáticos, `common/web.py: iniciar_web`) | Forma documentada y probada de lanzar la WS nº N o el FO nº N con Docker en caliente (comandos `docker run` parametrizados o script) | 2 y 5 |
+| 1.3 | Tantas instancias de cada módulo como pida el profesor, en la misma o en distintas máquinas; parar una de golpe («crash») | **Cumple** | `nueva_ws.ps1 WS3 "…"` y `nuevo_fo.ps1 FO3` (Docker, en caliente; probados), alta de WS en el panel; caídas con `docker kill` / Ctrl+C (`docs/GUIA_DESPLIEGUE.md` §5–6) | — | 5 ✔ |
 
 ## 2. Funcionamiento base (3 puntos)
 
 | # | Punto de la guía | Estado | Dónde está | Qué falta | Fase |
 |---|---|---|---|---|---|
 | 2.1 | Todo parametrizado (puertos de servidor, IPs/puertos a los que conectar); sin recompilar | **Cumple** | Argumentos obligatorios en los 4 `main()`; `PANEL_PORT`, `WEB_PORT`, `WATER_DB` por variable de entorno; compose con `${KAFKA_BROKER}`, `${CENTRAL}`, `${PUBLIC_IP}` y puertos en variables. Revisado: ninguna IP fija en los módulos | — | 3 ✔ |
-| 2.2 | No falla durante una ejecución normal; Central atiende a cuantas WS/FO lleguen | **Cumple** | Un hilo por Monitor (`atender_monitor`), consumidores Kafka en hilos, panel `ThreadingHTTPServer` | Probarlo en el escenario real (AWS + 2 PCs) | 5 |
-| 2.3 | Todo arranca sin interacción y se ve en las terminales de Central, FO y WS lo que pasa | **Cumple** | Logs por consola en todos los módulos + pantallas web | Comprobar en Docker (`docker compose logs -f`) | 5 |
+| 2.2 | No falla durante una ejecución normal; Central atiende a cuantas WS/FO lleguen | **Cumple** | Un hilo por Monitor (`atender_monitor`), consumidores Kafka en hilos, panel `ThreadingHTTPServer`. Probado en el laboratorio con 2 PCs (02/11) | Repetirlo con la EC2 | 5 ✔ |
+| 2.3 | Todo arranca sin interacción y se ve en las terminales de Central, FO y WS lo que pasa | **Cumple** | Consola de cada contenedor (`docker logs -f`, `docker attach`) + pantallas web. Guía: `docs/GUIA_DESPLIEGUE.md` §4 | — | 5 ✔ |
 | 2.4 | Al arrancar/reiniciar, Central lee SQLite y muestra las WS registradas (con ubicación) como Desconectadas | **Cumple** | `cargar_estaciones()` + `get_estaciones()`. En la nube la BD está en el volumen `central_datos` (`WATER_DB=/data/water.db`): probado `down` + `up` → la WS sigue, en gris | — | 2 ✔ |
 | 2.5 | Panel: ID, ubicación, agua suministrada, estados con colores; Watering parpadeante con L/min, L y operario; naranja con la leyenda **"Out of Service"** | **Cumple** | `ui/panel.html`, `ui/comun.js` (ETIQUETA `Out of Service`), `WM_Central/panel.py: foto_estado` (campo `total` = litros de los riegos terminados en la BD + el riego en curso, `db.volumen_por_ws`) | — | 3 ✔ |
 | 2.6 | Registro y **autenticación** de WS con aceptación o **denegación** (p. ej. «WS no registrada») | **Cumple** | `autenticar_ws()` y `alta_ws()` (WM_Central.py); alta desde el menú (opción 5) y el panel (`/api/estaciones`); WS1 y WS2 de serie (`db.crear_tablas`). Denegaciones: «WS no registrada», «WS ya conectada desde otro Monitor». El Monitor lo muestra y reintenta (`monitor_central.mantener_conexion`). Tests `test_autenticar_*` | — | 3 ✔ |
@@ -50,7 +51,7 @@ Desde la fase 1 las carpetas son `WM_Central/`, `WM_WS/` y `WM_FO/` (antes `cent
 
 | # | Punto | Estado | Dónde está | Qué falta | Fase |
 |---|---|---|---|---|---|
-| 4.1 | Memoria (desarrollo, despliegue, resultados) | **Parcial** | `MEMORIA SD p1.docx` (sin subir), `capturas/` | Rehacer capturas con la parte cloud; guía de despliegue = la del día de la corrección | 5 |
+| 4.1 | Memoria (desarrollo, despliegue, resultados) | **Parcial** | `MEMORIA SD p1.docx` (sin subir), `capturas/` (locales), guía de despliegue en `docs/GUIA_DESPLIEGUE.md` | **Vosotros:** rehacer las capturas con la parte cloud en AWS (lista abajo) y copiar a la memoria la guía de despliegue | 5 |
 | 4.2 | Diseño, confort, interfaces, acabado | **Cumple** | Pantallas web de todos los módulos (`ui/`), lanzador | — | — |
 | 4.3 | Otros: dos centrales/brokers, tramas `<STX>D<ETX><LRC>` | **No cumple** | Sockets con cabecera de 64 bytes (`common/sockets_utils.py`) | Opcional, preguntar antes | Opcional |
 
@@ -61,3 +62,36 @@ Desde la fase 1 las carpetas son `WM_Central/`, `WM_WS/` y `WM_FO/` (antes `cent
 | Prompts de IA en el repo (`prompts/`) | **No cumple** | `prompts_ia/` no tiene prompts: hay que copiarlos (incluidos los de esta sesión) |
 | CI/CD: VS Code → GitHub → AWS | **No cumple** | Script `deploy/deploy_ec2.sh` + (opcional) GitHub Actions por SSH |
 | Saber explicar el código | — | Resumen en español sencillo al final de cada fase |
+
+## Pendiente de vosotros (no se puede hacer desde el código)
+
+| Qué | Dónde |
+|---|---|
+| Desplegar la parte cloud en la EC2 y probarla desde el laboratorio | `docs/DESPLIEGUE_AWS.md` |
+| Copiar los prompts de IA reales a `prompts/` | Obligatorio: sin ellos se puede suspender |
+| Apellidos y DNI en `Nombres.txt` y en la memoria | `Nombres.txt` |
+| Dar acceso al profesor al repo de GitHub | GitHub > Settings > Collaborators |
+| Rehacer las capturas con AWS (lista abajo) y terminar la memoria | `MEMORIA SD p1.docx` |
+| Imprimir la guía de corrección a doble cara con la columna «E.» rellenada | — |
+| (Opcional) Tramas `<STX><DATA><ETX><LRC>` en sockets: suma en «otros aspectos técnicos» | Preguntar antes |
+
+## Capturas para la memoria
+
+Las de `capturas/` se hicieron en local (Kafka en `localhost`). Las que deben salir con la parte
+cloud en AWS, en un navegador o terminal **real** donde se vea la IP o el comando:
+
+| Captura de la memoria | Qué capturar ahora |
+|---|---|
+| 0 (portada), 6, 13, 14, 15, 20, 21, 22 | Panel en `http://<IP_EC2>:8080` con la barra de direcciones visible (mismos estados que las de `capturas/`) |
+| 2 | En la EC2: `docker logs wm_central` con `REG: WS1/WS2 autenticada` y «Kafka conectado (kafka:29092)» |
+| 3, 11 | PC2: `docker compose -f docker-compose.ws.yml ps` (4 contenedores Up) y `docker logs ws1_m` («autenticada en WM_Central (<IP_EC2>:5050)») |
+| 8 | Consola de AWS: la instancia «En ejecución» con su IP pública |
+| 9 | Security group: reglas 22, 9092, **5050**, **8080** |
+| 10 | En la EC2: `docker compose -f docker-compose.cloud.yml ps` (kafka y wm_central Up) y el final de `bash deploy/deploy_ec2.sh` |
+| 12 | PC2: `docker attach ws1_e` con el menú del Engine |
+| 16 | En la EC2: `docker logs wm_central` con `FIN: WS… motivo=FUGA … -> FUGA` |
+| 17 | `python -m tests.ver_telemetria <IP_EC2>:9092` (TELEMETRIA y FIN) |
+| 18 | PC1: `docker attach fo1` y `docker attach fo2` en modo fichero |
+| 19 | PC1: `docker compose -f docker-compose.fo.yml ps` |
+| 4, 5a, 5b, 7 (código) | Ya rehechas con el código final (`capturas/`) |
+| Nuevas (recomendadas) | Monitor con «WS no registrada» y la WS entrando tras el alta · un caso de resiliencia (p. ej. Engine caído → FIN AVERIA con el volumen) · FO/Engine con «Imposible conectar con WM_Central» · `Test-NetConnection` a 9092/5050/8080 · ejecución de GitHub Actions (si se usa) |
