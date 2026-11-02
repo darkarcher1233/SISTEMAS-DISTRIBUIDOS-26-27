@@ -40,9 +40,9 @@ class _LazyKafkaProducer:
     def send(self, topic: str, value: Any = None, *args, **kwargs):
         return self._get_producer().send(topic, value=value, *args, **kwargs)
 
-    def flush(self):
+    def flush(self, timeout=None):
         if self._producer is not None:
-            self._producer.flush()
+            self._producer.flush(timeout=timeout)
 
     def close(self):
         if self._producer is not None:

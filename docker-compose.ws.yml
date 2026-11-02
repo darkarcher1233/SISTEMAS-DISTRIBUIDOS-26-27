@@ -10,9 +10,8 @@
 # - El Engine encuentra a su Monitor por el NOMBRE del servicio (ws1_m:6000): Docker Compose
 #   crea una red propia con DNS interno. Los dos Monitor escuchan en el 6000, pero cada uno
 #   en su contenedor, así que no chocan.
-# - restart: on-failure -> depends_on no espera a que el puerto esté abierto: si el Engine
-#   arranca antes que su Monitor, falla con ConnectionRefused y Docker lo reinicia.
-#   Igual el Monitor si Central aún no está levantada.
+# - Si el Engine arranca antes que su Monitor, o el Monitor antes que Central, reintentan solos.
+# - Pantallas web: Monitor WS1 http://localhost:8100 · Engine WS1 :8200 · WS2 :8101 y :8201
 
 name: sd-ws   # nombre de proyecto propio: no se mezcla con el Kafka de docker-compose.yml
 
@@ -21,6 +20,7 @@ services:
     build: .
     image: sd-app
     container_name: ws1_m
+    ports: ["8100:8100"]   # pantalla web
     command: ["python", "-m", "ws.WM_WS_M", "6000", "${CENTRAL}", "WS1", "Parque Norte"]
     extra_hosts:
       - "host.docker.internal:host-gateway"   # para Linux; en Docker Desktop ya existe
@@ -29,6 +29,7 @@ services:
   ws1_e:
     image: sd-app
     container_name: ws1_e
+    ports: ["8200:8200"]   # pantalla web
     command: ["python", "-m", "ws.WM_WS_E", "${KAFKA_BROKER}", "ws1_m:6000"]
     depends_on:
       - ws1_m
@@ -39,6 +40,7 @@ services:
   ws2_m:
     image: sd-app
     container_name: ws2_m
+    ports: ["8101:8100"]   # pantalla web
     command: ["python", "-m", "ws.WM_WS_M", "6000", "${CENTRAL}", "WS2", "Parque Sur"]
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -47,6 +49,7 @@ services:
   ws2_e:
     image: sd-app
     container_name: ws2_e
+    ports: ["8201:8200"]   # pantalla web
     command: ["python", "-m", "ws.WM_WS_E", "${KAFKA_BROKER}", "ws2_m:6000"]
     depends_on:
       - ws2_m

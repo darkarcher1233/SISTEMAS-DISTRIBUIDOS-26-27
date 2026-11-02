@@ -21,7 +21,7 @@ Implementación: `common/sockets_utils.py`.
 
 | Sentido | Mensaje | Respuesta | Significado |
 |---|---|---|---|
-| Monitor → Engine | `ID#<ws_id>` | – | Nada más conectarse: el Engine recibe su ID |
+| Monitor → Engine | `ID#<ws_id>#<ubicacion>` | – | Nada más conectarse: el Engine recibe su ID (la ubicación solo es para su pantalla; un Engine antiguo lee solo el ID) |
 | Monitor → Engine | `HC` (cada 1 s) | `OK` / `KO` | Health check. Timeout de 2 s = KO |
 
 ### Funciones compartidas dentro de WM_WS_M
@@ -31,7 +31,8 @@ Implementación: `common/sockets_utils.py`.
 | `registrar(ip, puerto, ws_id, ubicacion)` | `ws/monitor_central.py` | Abde | `WM_WS_M.py` |
 | `notificar_fuga()` | `ws/monitor_central.py` | Abde | `monitor_engine.py` |
 | `notificar_resuelta()` | `ws/monitor_central.py` | Abde | `monitor_engine.py` |
-| `iniciar_servidor_engine(puerto, ws_id)` | `ws/monitor_engine.py` | Vlad | `WM_WS_M.py` |
+| `iniciar_servidor_engine(puerto, ws_id, ubicacion)` | `ws/monitor_engine.py` | Vlad | `WM_WS_M.py` |
+| `mantener_conexion(ip, puerto, ws_id, ubicacion)` | `ws/monitor_central.py` | Abde | `WM_WS_M.py` (se re-registra si Central se cae) |
 
 ## 2. Kafka (Semana 2: completar entonces)
 
@@ -83,6 +84,7 @@ salvo `ESTADO_WS`, que es para todos:
 - `DENEGADO` y `RESUMEN` cierran la petición: en modo fichero el FO pasa a la siguiente (tras 4 s).
 - `ESTADO_WS.estaciones` también se acepta como el dict de Central `{ws_id: {"ubicacion", "estado", ...}}`.
 - Prueba sin Central real: `tests/central_falsa_fo.py`.
+- Los riegos ordenados desde el menú o el panel de Central van con `operario` / `fo_id` = `CENTRAL` (no se valida en la BD).
 
 `motivo` del FIN:
 
