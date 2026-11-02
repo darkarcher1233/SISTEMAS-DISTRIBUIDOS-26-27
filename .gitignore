@@ -18,3 +18,9 @@ docs/enunciado/
 .idea/
 Thumbs.db
 .DS_Store
+
+# Lista de procesos y ajustes del lanzador (cada PC la suya)
+lanzador.json
+
+# Ejemplo de la interfaz (ya adaptado en ui/)
+WEB/

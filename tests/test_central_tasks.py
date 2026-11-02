@@ -55,13 +55,10 @@ def test_cargar_estaciones_restores_them_as_desconectadas(tmp_path, monkeypatch)
 
     cargar_estaciones()
 
-    assert estaciones["ws-db"] == {
-        "ubicacion": "Invernadero",
-        "estado": DESCONECTADA,
-        "caudal": 0.0,
-        "volumen": 0.0,
-        "operario": None,
-    }
+    ws = estaciones["ws-db"]
+    assert ws["ubicacion"] == "Invernadero"
+    assert ws["estado"] == DESCONECTADA
+    assert (ws["caudal"], ws["volumen"], ws["operario"]) == (0.0, 0.0, None)
     assert db.get_estaciones() == [("ws-db", "Invernadero", DESCONECTADA)]
 
 
@@ -185,3 +182,39 @@ def test_procesar_telemetria_reenvia_a_fo_and_summary():
     assert telemetry["ws_id"] == "ws-tele"
     assert resumen["fo_id"] == "FO1"
     assert resumen["motivo"] == "TIEMPO"
+
+
+def test_fin_por_bloqueo_no_devuelve_la_ws_a_disponible():
+    estaciones.clear()
+    estaciones["ws-b"] = {"ubicacion": "Rotonda", "estado": DISPONIBLE, "caudal": 0.0,
+                          "volumen": 0.0, "operario": None}
+    procesar_telemetria({"tipo": "TELEMETRIA", "ws_id": "ws-b", "caudal": 20.0, "volumen": 1.0, "operario": "FO1"})
+    bloquear_estacion("ws-b")
+    procesar_telemetria({"tipo": "TELEMETRIA", "ws_id": "ws-b", "caudal": 20.0, "volumen": 1.3, "operario": "FO1"})
+    procesar_telemetria({"tipo": "FIN", "ws_id": "ws-b", "volumen": 1.3, "duracion": 4.0, "motivo": "BLOQUEO"})
+
+    assert estaciones["ws-b"]["estado"] == FUERA_SERVICIO
+
+
+def test_riego_ordenado_desde_central_no_necesita_operario_de_la_bd():
+    estaciones.clear()
+    estaciones["ws-c"] = {"ubicacion": "Plaza", "estado": DISPONIBLE, "caudal": 0.0,
+                          "volumen": 0.0, "operario": None}
+
+    class DummyProducer:
+        def __init__(self):
+            self.messages = []
+
+        def send(self, topic, value=None, *args, **kwargs):
+            self.messages.append((topic, value))
+
+        def flush(self):
+            pass
+
+    prod = DummyProducer()
+    ok = procesar_peticion({"tipo": "PETICION", "fo_id": "CENTRAL", "ws_id": "ws-c", "duracion": 5},
+                           prod, desde_central=True)
+
+    assert ok is True
+    assert estaciones["ws-c"]["estado"] == REGANDO
+    assert prod.messages[0][1]["tipo"] == "REGAR"

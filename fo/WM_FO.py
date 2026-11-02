@@ -5,9 +5,11 @@ Solo usa KAFKA (no tiene sockets).
 
 USO
     python -m fo.WM_FO <ip_broker:puerto> <id_operario>
+    Pantalla web: la URL sale por consola (otro puerto: variable de entorno WEB_PORT)
 
 QUÉ HACE
   - Menú:  1 ver WS disponibles · 2 pedir riego (ws_id + duración) · 3 leer fichero · 0 salir
+    (lo mismo desde la pantalla web: ui/operario.html)
   - Pedir riego -> publica en 'peticiones'  {tipo: PETICION, fo_id, ws_id, duracion}
   - Hilo consumidor de 'ordenes', quedándose SOLO con los mensajes de su fo_id:
         AUTORIZADO · DENEGADO (+motivo) · TELEMETRIA de su WS · RESUMEN final
@@ -33,29 +35,46 @@ from common.kafka_utils import (
     consumidor,
     productor,
 )
+from common.web import Registro, esperar_sin_teclado, iniciar_web
 
 PAUSA_ENTRE_PETICIONES = 4   # segundos entre una petición del fichero y la siguiente
 MARGEN_ESPERA = 30           # segundos extra (sobre la duración) antes de dar por perdida una petición
+SIN_RESPUESTA = 10           # segundos sin AUTORIZADO/DENEGADO -> se marca "sin respuesta"
+REINTENTO_KAFKA = 3
 ALARMAS = ("FUGA", "BLOQUEO")
+MOTIVOS = {
+    "TIEMPO": "Riego completado: se agotó el tiempo pedido",
+    "MANUAL": "Parado a mano en la estación",
+    "FUGA": "Interrumpido por una FUGA en la estación",
+    "BLOQUEO": "Interrumpido: CENTRAL bloqueó la estación",
+}
 
 fo_id: str = ""
+broker: str = ""
 
 # ---------------------- Estado compartido con el hilo consumidor -------------------
 estado_lock = threading.Lock()
 ultimo_estado_ws: list[dict] | None = None    # última lista de WS recibida en ESTADO_WS
+instante_estado_ws: float | None = None
 pendientes: dict[str, threading.Event] = {}  # ws_id -> se activa al llegar DENEGADO o RESUMEN
+solicitudes: list[dict] = []                 # para la pantalla, la más nueva primero
+fichero_en_curso: dict | None = None
 kafka_listo = threading.Event()              # el consumidor ya tiene particiones asignadas
-kafka_caido = threading.Event()              # el consumidor ha fallado (sin Kafka no hay FO)
+eventos = Registro()
+_contador = 0
+_prod = None
 
 
-def mostrar(texto: str):
+def mostrar(texto: str, nivel: str = "INFO"):
     """Print desde el hilo consumidor: salto de línea delante para no pisar el prompt."""
     print(f"\n{texto}", flush=True)
+    eventos.add(texto.split("] ", 1)[-1], nivel)
 
 
 def alarma(texto: str):
     linea = "!" * 60
-    mostrar(f"{linea}\n!!!  {texto}\n{linea}")
+    print(f"\n{linea}\n!!!  {texto}\n{linea}", flush=True)
+    eventos.add(texto, "ALERTA")
 
 
 def normalizar_estaciones(estaciones) -> list[dict]:
@@ -75,10 +94,22 @@ def terminar_peticion(ws_id):
         evento.set()
 
 
+EN_CURSO = ("ENVIADA", "AUTORIZADA", "REGANDO")
+
+
+def _solicitud_abierta(ws_id, estados=EN_CURSO + ("SIN_RESPUESTA",)):
+    """La solicitud más reciente sobre ws_id que aún no ha terminado. Con estado_lock cogido.
+    Por defecto también vale una "sin respuesta": si la respuesta llega tarde, se actualiza."""
+    for s in solicitudes:
+        if s["ws_id"] == ws_id:
+            return s if s["estado"] in estados else None
+    return None
+
+
 # ---------------------- Hilo consumidor de 'ordenes' ---------------------------------
 def procesar_orden(datos):
     """Procesa un mensaje de 'ordenes'. Solo se queda con ESTADO_WS y con lo de su fo_id."""
-    global ultimo_estado_ws
+    global ultimo_estado_ws, instante_estado_ws
     if not isinstance(datos, dict):
         return
 
@@ -86,55 +117,104 @@ def procesar_orden(datos):
     if tipo == "ESTADO_WS":
         with estado_lock:
             ultimo_estado_ws = normalizar_estaciones(datos.get("estaciones"))
+            instante_estado_ws = time.time()
         return
 
     if datos.get("fo_id") != fo_id:
         return   # es de otro operario (o una orden para una WS)
 
     ws_id = datos.get("ws_id", "?")
+    ahora = time.time()
+    with estado_lock:
+        s = _solicitud_abierta(ws_id)
+
     if tipo == "AUTORIZADO":
-        mostrar(f"[{fo_id}] AUTORIZADO: riego en {ws_id} durante {datos.get('duracion', '?')} s")
+        mostrar(f"[{fo_id}] AUTORIZADO: riego en {ws_id} durante {datos.get('duracion', '?')} s", "OK")
+        if s:
+            with estado_lock:
+                s.update(estado="AUTORIZADA", autorizada=ahora)
 
     elif tipo == "DENEGADO":
-        mostrar(f"[{fo_id}] DENEGADO en {ws_id}: {datos.get('motivo', 'sin motivo')}")
+        mostrar(f"[{fo_id}] DENEGADO en {ws_id}: {datos.get('motivo', 'sin motivo')}", "AVISO")
+        if s:
+            with estado_lock:
+                s.update(estado="DENEGADA", motivo=datos.get("motivo", "sin motivo"))
         terminar_peticion(ws_id)
 
     elif tipo == "TELEMETRIA":
-        mostrar(f"[{fo_id}] {ws_id} caudal={datos.get('caudal', 0)} L/min "
-                f"volumen={datos.get('volumen', 0)} L")
+        print(f"\n[{fo_id}] {ws_id} caudal={datos.get('caudal', 0)} L/min "
+              f"volumen={datos.get('volumen', 0)} L", flush=True)
+        if s:
+            with estado_lock:
+                inicio = s.get("autorizada") or s["creada"]
+                s["estado"] = "REGANDO"
+                s["telemetria"] = {"caudal": datos.get("caudal", 0), "volumen": datos.get("volumen", 0),
+                                   "segundos": ahora - inicio, "duracion": s["duracion"]}
 
     elif tipo == "RESUMEN":
         motivo = datos.get("motivo", "?")
         if motivo in ALARMAS:
             alarma(f"RIEGO EN {ws_id} INTERRUMPIDO POR {motivo}")
         mostrar(f"[{fo_id}] RESUMEN {ws_id}: volumen={datos.get('volumen', 0)} L "
-                f"duracion={datos.get('duracion', 0)} s motivo={motivo}")
+                f"duracion={datos.get('duracion', 0)} s motivo={motivo}",
+                "ALERTA" if motivo in ALARMAS else "OK")
+        if s:
+            segundos = float(datos.get("duracion") or 0)
+            volumen = float(datos.get("volumen") or 0)
+            with estado_lock:
+                s.update(estado="FINALIZADA", resumen={
+                    "volumen": volumen, "segundos": segundos, "duracion_pedida": s["duracion"],
+                    "caudal_medio": volumen / (segundos / 60) if segundos else 0,
+                    "motivo": MOTIVOS.get(motivo, f"Motivo: {motivo}"),
+                })
+                if motivo in ALARMAS:
+                    s["alerta"] = MOTIVOS[motivo]
         terminar_peticion(ws_id)
 
 
-def consumir_ordenes(broker: str):
-    """Lee 'ordenes' sin grupo: cada FO recibe TODOS los mensajes nuevos y filtra los suyos."""
-    try:
-        # group_id=None: sin commits, cada arranque empieza en "latest" (no repite riegos viejos)
-        cons = consumidor(broker, TOPIC_ORDENES, group_id=None,
-                          auto_offset_reset="latest", enable_auto_commit=False)
-        while True:
-            lotes = cons.poll(timeout_ms=500)
-            if not kafka_listo.is_set() and cons.assignment():
-                kafka_listo.set()
-            for mensajes in lotes.values():
-                for mensaje in mensajes:
-                    try:
-                        procesar_orden(mensaje.value)
-                    except Exception as exc:  # noqa: BLE001
-                        mostrar(f"[{fo_id}] ERROR procesando orden: {exc}")
-    except Exception as exc:  # noqa: BLE001
-        mostrar(f"[{fo_id}] ERROR Kafka 'ordenes' ({broker}): {exc}")
-        kafka_caido.set()
-        kafka_listo.set()   # no dejar colgado al hilo principal
+def consumir_ordenes():
+    """Lee 'ordenes' sin grupo: cada FO recibe TODOS los mensajes nuevos y filtra los suyos.
+    Si Kafka cae, se reintenta cada pocos segundos."""
+    while True:
+        cons = None
+        try:
+            # group_id=None: sin commits, cada arranque empieza en "latest" (no repite riegos viejos)
+            cons = consumidor(broker, TOPIC_ORDENES, group_id=None,
+                              auto_offset_reset="latest", enable_auto_commit=False)
+            while True:
+                lotes = cons.poll(timeout_ms=500)
+                if not kafka_listo.is_set() and cons.assignment():
+                    kafka_listo.set()
+                    eventos.add(f"Conectado a Kafka ({broker})", "OK")
+                for mensajes in lotes.values():
+                    for mensaje in mensajes:
+                        try:
+                            procesar_orden(mensaje.value)
+                        except Exception as exc:  # noqa: BLE001
+                            mostrar(f"[{fo_id}] ERROR procesando orden: {exc}", "ALERTA")
+        except Exception as exc:  # noqa: BLE001
+            if kafka_listo.is_set():
+                mostrar(f"[{fo_id}] ERROR Kafka 'ordenes' ({broker}): {exc}; reintentando", "ALERTA")
+            else:
+                print(f"[{fo_id}] Kafka no responde ({exc}); reintentando", flush=True)
+            kafka_listo.clear()
+        finally:
+            if cons is not None:
+                try:
+                    cons.close()
+                except Exception:  # noqa: BLE001
+                    pass
+        time.sleep(REINTENTO_KAFKA)
 
 
-# ---------------------- Acciones del menú --------------------------------------------
+# ---------------------- Acciones ------------------------------------------------------
+def prod_fo():
+    global _prod
+    if _prod is None:
+        _prod = productor(broker, max_block_ms=5000)
+    return _prod
+
+
 def ver_estaciones():
     with estado_lock:
         estaciones = ultimo_estado_ws
@@ -151,22 +231,35 @@ def ver_estaciones():
 
 def pedir_riego(prod, ws_id: str, duracion: int) -> threading.Event:
     """Publica la PETICION y devuelve el evento que se activa cuando termine."""
+    global _contador
     evento = threading.Event()
     with estado_lock:
         pendientes[ws_id] = evento
-    prod.send(TOPIC_PETICIONES, {"tipo": "PETICION", "fo_id": fo_id,
-                                 "ws_id": ws_id, "duracion": duracion})
-    prod.flush()
-    print(f"[{fo_id}] PETICION enviada: {ws_id} durante {duracion} s")
+        _contador += 1
+        solicitud = {"req_id": f"#{_contador}", "ws_id": ws_id, "duracion": duracion,
+                     "estado": "ENVIADA", "creada": time.time()}
+        solicitudes.insert(0, solicitud)
+        del solicitudes[30:]
+    evento.solicitud = solicitud   # para que el modo fichero sepa cómo acabó
+    try:
+        prod.send(TOPIC_PETICIONES, {"tipo": "PETICION", "fo_id": fo_id,
+                                     "ws_id": ws_id, "duracion": duracion}).get(timeout=5)
+    except Exception as exc:  # noqa: BLE001
+        with estado_lock:
+            solicitud.update(estado="SIN_RESPUESTA", alerta=f"No se pudo enviar: {exc}")
+        mostrar(f"[{fo_id}] No se pudo enviar la PETICION ({exc})", "ALERTA")
+        terminar_peticion(ws_id)
+        return evento
+    mostrar(f"[{fo_id}] PETICION enviada: {ws_id} durante {duracion} s")
     return evento
 
 
 def parsear_linea(linea: str) -> tuple[str, int] | None:
-    """'WS1;10' -> ('WS1', 10). Vacías, comentarios (#) o mal formadas -> None."""
+    """'WS1;10' (o 'WS1 10') -> ('WS1', 10). Vacías, comentarios (#) o mal formadas -> None."""
     linea = linea.strip()
     if not linea or linea.startswith("#"):
         return None
-    partes = linea.split(";")
+    partes = linea.split(";") if ";" in linea else linea.split()
     if len(partes) != 2 or not partes[0].strip():
         return None
     try:
@@ -178,16 +271,43 @@ def parsear_linea(linea: str) -> tuple[str, int] | None:
     return partes[0].strip(), duracion
 
 
-def leer_fichero(ruta: str) -> list[tuple[str, int]]:
+def leer_lineas(lineas) -> list[tuple[str, int]]:
     peticiones = []
-    with open(ruta, encoding="utf-8") as fichero:
-        for numero, linea in enumerate(fichero, start=1):
-            peticion = parsear_linea(linea)
-            if peticion is not None:
-                peticiones.append(peticion)
-            elif linea.strip() and not linea.strip().startswith("#"):
-                print(f"Línea {numero} ignorada (formato 'ws_id;duracion'): {linea.strip()}")
+    for numero, linea in enumerate(lineas, start=1):
+        peticion = parsear_linea(linea)
+        if peticion is not None:
+            peticiones.append(peticion)
+        elif linea.strip() and not linea.strip().startswith("#"):
+            print(f"Línea {numero} ignorada (formato 'ws_id;duracion'): {linea.strip()}")
     return peticiones
+
+
+def leer_fichero(ruta: str) -> list[tuple[str, int]]:
+    with open(ruta, encoding="utf-8") as fichero:
+        return leer_lineas(fichero)
+
+
+def ejecutar_peticiones(prod, nombre: str, peticiones: list[tuple[str, int]]):
+    """Envía las peticiones de una en una: espera a que termine cada una + 4 s."""
+    global fichero_en_curso
+    progreso = {"nombre": nombre, "activo": True, "actual": 0, "total": len(peticiones), "resultados": []}
+    fichero_en_curso = progreso
+    eventos.add(f"Fichero {nombre}: {len(peticiones)} peticiones")
+    for i, (ws_id, duracion) in enumerate(peticiones, start=1):
+        progreso["actual"] = i
+        print(f"[{fo_id}] --- petición {i}/{len(peticiones)} del fichero ---")
+        evento = pedir_riego(prod, ws_id, duracion)
+        solicitud = evento.solicitud
+        if not evento.wait(duracion + MARGEN_ESPERA):
+            terminar_peticion(ws_id)
+            with estado_lock:
+                solicitud["estado"] = "SIN_RESPUESTA"
+            print(f"[{fo_id}] {ws_id}: sin respuesta de Central, se pasa a la siguiente")
+        progreso["resultados"].append({"ws_id": ws_id, "duracion": duracion, "resultado": solicitud["estado"]})
+        if i < len(peticiones):
+            time.sleep(PAUSA_ENTRE_PETICIONES)
+    progreso["activo"] = False
+    mostrar(f"[{fo_id}] fichero {nombre} terminado", "OK")
 
 
 def modo_fichero(prod):
@@ -201,25 +321,69 @@ def modo_fichero(prod):
     if not peticiones:
         print(f"{ruta} no tiene peticiones válidas.")
         return
-
-    for i, (ws_id, duracion) in enumerate(peticiones, start=1):
-        print(f"[{fo_id}] --- petición {i}/{len(peticiones)} del fichero ---")
-        evento = pedir_riego(prod, ws_id, duracion)
-        if not evento.wait(duracion + MARGEN_ESPERA):
-            terminar_peticion(ws_id)
-            print(f"[{fo_id}] {ws_id}: sin respuesta de Central, se pasa a la siguiente")
-        if i < len(peticiones):
-            time.sleep(PAUSA_ENTRE_PETICIONES)
-    print(f"[{fo_id}] fichero {ruta} terminado")
+    ejecutar_peticiones(prod, ruta, peticiones)
 
 
+# ---------------------- Pantalla web --------------------------------------------------
+def estado_web():
+    ahora = time.time()
+    with estado_lock:
+        for s in solicitudes:
+            if s["estado"] == "ENVIADA" and ahora - s["creada"] > SIN_RESPUESTA:
+                s["estado"] = "SIN_RESPUESTA"
+            if s["estado"] == "REGANDO" and s.get("telemetria"):
+                s["telemetria"]["segundos"] = ahora - (s.get("autorizada") or s["creada"])
+        estaciones = [
+            {"id": ws.get("ws_id"), "ubicacion": ws.get("ubicacion") or "", "estado": ws.get("estado", "DESCONECTADA"),
+             "caudal": ws.get("caudal") or 0, "operario": ws.get("operario"), "motivo_fuga": ws.get("motivo_fuga")}
+            for ws in sorted(ultimo_estado_ws or [], key=lambda w: str(w.get("ws_id")))
+        ]
+        lista = [dict(s) for s in solicitudes]
+        fichero = None
+        if fichero_en_curso:
+            fichero = {**fichero_en_curso, "resultados": list(fichero_en_curso["resultados"])}
+    return {"ahora": ahora, "fo_id": fo_id, "broker": broker, "kafka": kafka_listo.is_set(),
+            "instantanea": instante_estado_ws, "estaciones": estaciones, "solicitudes": lista,
+            "fichero": fichero, "eventos": eventos.lista()}
+
+
+def web_solicitar(cuerpo):
+    ws_id = str(cuerpo.get("ws") or "").strip()
+    try:
+        duracion = int(cuerpo.get("duracion") or 0)
+    except (TypeError, ValueError):
+        duracion = 0
+    if not ws_id or not 0 < duracion <= 3600:
+        raise ValueError("Estación y duración (1-3600 s) obligatorias")
+    with estado_lock:
+        if _solicitud_abierta(ws_id, EN_CURSO):
+            raise ValueError(f"Ya tienes una solicitud en curso en {ws_id}")
+    threading.Thread(target=pedir_riego, args=(prod_fo(), ws_id, duracion), daemon=True).start()
+    return {"ok": True, "mensaje": f"Solicitud enviada: {ws_id} durante {duracion} s"}
+
+
+def web_fichero(cuerpo):
+    if fichero_en_curso and fichero_en_curso["activo"]:
+        raise ValueError("Ya hay un fichero en curso")
+    nombre = str(cuerpo.get("nombre") or "fichero.txt")
+    peticiones = leer_lineas(str(cuerpo.get("contenido") or "").splitlines())
+    if not peticiones:
+        raise ValueError("El fichero no tiene peticiones válidas (una por línea: WS1;30)")
+    threading.Thread(target=ejecutar_peticiones, args=(prod_fo(), nombre, peticiones), daemon=True).start()
+    return {"ok": True, "mensaje": f"{len(peticiones)} peticiones en marcha"}
+
+
+# ---------------------- Menú ----------------------------------------------------------
 def menu(prod):
     ayuda = "1 ver WS  2 pedir riego  3 leer fichero  0 salir"
     print(ayuda)
     while True:
         try:
             opcion = input("> ").strip()
-        except (EOFError, KeyboardInterrupt):
+        except EOFError:
+            esperar_sin_teclado(f"Operario {fo_id}")
+            break
+        except KeyboardInterrupt:
             print()
             break
 
@@ -245,7 +409,7 @@ def menu(prod):
 
 
 def main():
-    global fo_id
+    global fo_id, broker
     if len(sys.argv) != 3:
         print("USO: python -m fo.WM_FO <ip_broker:puerto> <id_operario>")
         sys.exit(1)
@@ -254,18 +418,18 @@ def main():
         print("Argumentos incorrectos. Ejemplo: python -m fo.WM_FO 127.0.0.1:9092 FO1")
         sys.exit(1)
 
-    threading.Thread(target=consumir_ordenes, args=(broker,), daemon=True).start()
+    iniciar_web("operario.html", estado_web, {"solicitar": web_solicitar, "fichero": web_fichero},
+                puerto_defecto=8300, nombre=f"Pantalla del operario {fo_id}")
+    threading.Thread(target=consumir_ordenes, daemon=True).start()
     print(f"[{fo_id}] conectando a Kafka {broker}...")
     if not kafka_listo.wait(20):
-        print(f"[{fo_id}] AVISO: Kafka aún no responde; las respuestas pueden perderse")
-    if kafka_caido.is_set():
-        sys.exit(1)   # en Docker, restart: on-failure lo vuelve a intentar
+        print(f"[{fo_id}] AVISO: Kafka aún no responde; se sigue reintentando")
 
-    prod = productor(broker)
     try:
-        menu(prod)
+        menu(prod_fo())
     finally:
-        prod.close()
+        if _prod is not None:
+            _prod.close()
 
 
 if __name__ == "__main__":
