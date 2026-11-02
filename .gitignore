@@ -24,3 +24,9 @@ lanzador.json
 
 # Ejemplo de la interfaz (ya adaptado en ui/)
 WEB/
+
+# Enunciado y guía de corrección en docs/ (material de la asignatura)
+docs/*.pdf
+
+# Claves SSH de AWS: NUNCA al repo
+*.pem
