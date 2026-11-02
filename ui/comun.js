@@ -5,7 +5,7 @@ const $ = sel => document.querySelector(sel);
 
 // Estados de las WS (nombres EXACTOS de WM_Central.py) -> clase CSS (comun.css) y texto
 const CLASE = {DISPONIBLE: 'disponible', REGANDO: 'regando', FUGA: 'fuga', FUERA_SERVICIO: 'fuera', DESCONECTADA: 'desconectada'};
-const ETIQUETA = {DISPONIBLE: 'Disponible', REGANDO: 'Regando', FUGA: 'Fuga', FUERA_SERVICIO: 'Fuera de servicio', DESCONECTADA: 'Desconectada'};
+const ETIQUETA = {DISPONIBLE: 'Disponible', REGANDO: 'Regando', FUGA: 'Fuga', FUERA_SERVICIO: 'Out of Service', DESCONECTADA: 'Desconectada'};
 
 // Escapar texto que viene de la red antes de meterlo en innerHTML
 function esc(x) {

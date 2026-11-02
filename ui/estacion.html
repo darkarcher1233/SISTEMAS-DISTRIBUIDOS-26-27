@@ -100,7 +100,7 @@ function textoEstado(d) {
   if (!d.con_monitor) return ['Sin monitor', `Se ha perdido el monitor. Reintentando con ${d.monitor}`];
   switch (d.estado) {
     case 'FUGA': return ['Fuga', 'El sensor detecta una avería: el engine responde KO y el monitor avisa a CENTRAL'];
-    case 'FUERA_SERVICIO': return ['Fuera de servicio', 'Bloqueada por CENTRAL: no acepta riegos'];
+    case 'FUERA_SERVICIO': return ['Out of Service', 'Bloqueada por CENTRAL: no acepta riegos'];
     case 'REGANDO': return ['Regando', 'Electroválvula abierta'];
     default: return ['Disponible', 'Electroválvula cerrada'];
   }
@@ -113,7 +113,7 @@ function pintar(d) {
   fijarHtml($('#monitor'), `<span class="punto ${d.con_monitor ? 'ok' : 'mal'}"></span>${d.con_monitor ? 'conectado' : 'sin conexión'}`);
   $('#monitor').title = d.monitor;
   fijarHtml($('#kafka'), `<span class="punto ${d.kafka ? 'ok' : ''}"></span>${d.kafka ? 'conectado' : 'conectando'}`);
-  fijarHtml($('#bloqueo'), d.bloqueada ? '<span class="punto medio"></span>fuera de servicio' : '<span class="punto ok"></span>activa');
+  fijarHtml($('#bloqueo'), d.bloqueada ? '<span class="punto medio"></span>Out of Service' : '<span class="punto ok"></span>activa');
 
   const [titulo, texto] = textoEstado(d);
   const clase = 'estado estado-' + (d.ws_id && d.con_monitor ? CLASE[d.estado] : 'desconectada');

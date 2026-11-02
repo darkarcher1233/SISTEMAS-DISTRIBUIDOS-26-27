@@ -1,5 +1,8 @@
 from WM_Central import db
 from WM_Central.WM_Central import (
+    alta_ws,
+    autenticar_ws,
+    conexiones,
     REGANDO,
     DISPONIBLE,
     DESCONECTADA,
@@ -10,7 +13,6 @@ from WM_Central.WM_Central import (
     bloquear_estacion,
     procesar_peticion,
     procesar_telemetria,
-    publicar_estado_ws,
     registrar_ws,
 )
 
@@ -59,7 +61,7 @@ def test_cargar_estaciones_restores_them_as_desconectadas(tmp_path, monkeypatch)
     assert ws["ubicacion"] == "Invernadero"
     assert ws["estado"] == DESCONECTADA
     assert (ws["caudal"], ws["volumen"], ws["operario"]) == (0.0, 0.0, None)
-    assert db.get_estaciones() == [("ws-db", "Invernadero", DESCONECTADA)]
+    assert ("ws-db", "Invernadero", DESCONECTADA) in db.get_estaciones()
 
 
 def test_registrar_ws_persists_station(tmp_path, monkeypatch):
@@ -69,7 +71,7 @@ def test_registrar_ws_persists_station(tmp_path, monkeypatch):
 
     registrar_ws(None, "ws-new", "Parque")
 
-    assert db.get_estaciones() == [("ws-new", "Parque", DISPONIBLE)]
+    assert ("ws-new", "Parque", DISPONIBLE) in db.get_estaciones()
 
 
 def test_procesar_peticion_autoriza_riego():
@@ -230,3 +232,47 @@ def test_fin_por_fuga_deja_la_ws_en_fuga_aunque_el_monitor_avise_despues():
 
     cambiar_estado("ws-f", "FUGA")      # aviso del Monitor que llega después
     assert estaciones["ws-f"]["estado"] == "FUGA"
+
+
+def test_bd_nueva_trae_ws1_y_ws2_desconectadas():
+    nombres = {ws_id: (ubic, estado) for ws_id, ubic, estado in db.get_estaciones()}
+    assert nombres["WS1"] == ("Parque Norte", DESCONECTADA)
+    assert nombres["WS2"] == ("Parque Sur", DESCONECTADA)
+
+
+def test_autenticar_deniega_ws_no_registrada():
+    estaciones.clear()
+    conexiones.clear()
+
+    assert autenticar_ws(object(), "WS99", "Parque X") == "WS no registrada"
+    assert "WS99" not in estaciones
+
+
+def test_alta_y_despues_autenticacion_aceptada():
+    estaciones.clear()
+    conexiones.clear()
+
+    assert alta_ws("WS3", "Jardín de prueba") is None
+    assert estaciones["WS3"]["estado"] == DESCONECTADA
+    assert alta_ws("WS3", "Otro") == "WS3 ya está dada de alta"
+
+    assert autenticar_ws(object(), "WS3", "Jardín de prueba") is None
+    assert estaciones["WS3"]["estado"] == DISPONIBLE
+
+
+def test_autenticar_deniega_ws_ya_conectada_desde_otro_monitor():
+    estaciones.clear()
+    conexiones.clear()
+    alta_ws("WS4", "Rotonda")
+    primero, segundo = object(), object()
+
+    assert autenticar_ws(primero, "WS4", "Rotonda") is None
+    assert autenticar_ws(segundo, "WS4", "Rotonda") == "WS ya conectada desde otro Monitor"
+    assert conexiones["WS4"] is primero
+
+
+def test_volumen_por_ws_suma_los_riegos_terminados():
+    db.guardar_riego("WS1", "fo1", "a", "b", 2.5)
+    db.guardar_riego("WS1", "fo2", "c", "d", 1.5)
+
+    assert db.volumen_por_ws()["WS1"] == 4.0

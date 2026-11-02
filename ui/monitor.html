@@ -66,9 +66,9 @@ function pintar(d) {
   fijarHtml(salud, htmlSalud);
 
   fijarHtml($('#central'), d.con_central
-    ? '<span class="punto ok"></span>Registrada (REG aceptado); el socket sigue abierto'
-    : `<span class="punto mal"></span>${d.autenticado ? 'Conexión perdida, reintentando' : 'Sin registrar, reintentando'}`);
-  $('#central-dir').textContent = d.con_central || !d.error_central ? d.central : `${d.central}: ${d.error_central}`;
+    ? '<span class="punto ok"></span>Autenticada (REG aceptado); el socket sigue abierto'
+    : `<span class="punto mal"></span>${esc(d.error_central || 'Imposible conectar con WM_Central')}. Reintentando…`);
+  $('#central-dir').textContent = d.central;
   fijarHtml($('#engine'), d.engine
     ? `<span class="punto ok"></span>Conectado desde ${esc(d.engine)}`
     : '<span class="punto mal"></span>No conectado');

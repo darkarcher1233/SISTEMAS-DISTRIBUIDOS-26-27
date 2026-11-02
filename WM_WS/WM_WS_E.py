@@ -24,7 +24,7 @@ KAFKA (semana 2)
 
 MENÚ (teclado) y PANTALLA WEB (ui/estacion.html) hacen lo mismo:
         f = averia True   r = averia False
-        m = riego manual (operario "MANUAL", pide duración)
+        m = pedir un riego a Central (pide operario y duración; Central valida y lo autoriza)
         s = parar el riego     q = salir
   La pantalla web además puede SOLICITAR un riego a Central (PETICION por Kafka, como un FO).
 
@@ -220,6 +220,24 @@ def iniciar_riego(duracion: int, operario: str, broker: str) -> bool:
     return True
 
 
+def pedir_riego_a_central(broker: str, fo_id: str, duracion: int):
+    """Riego pedido desde la propia estación (menú 'm' o pantalla web): se envía una PETICION a
+    Central por Kafka, igual que haría un FO. Central comprueba que el operario existe y que la WS
+    está disponible y contesta AUTORIZADO (+ REGAR) o DENEGADO. Lanza ValueError si no se puede."""
+    if not ws_id:
+        raise ValueError("La estación aún no tiene Id (falta el monitor)")
+    if not fo_id or not 0 < duracion <= 3600:
+        raise ValueError("Operario y duración (1-3600 s) obligatorios")
+    try:
+        productor_engine(broker).send(
+            TOPIC_PETICIONES,
+            {"tipo": "PETICION", "fo_id": fo_id, "ws_id": ws_id, "duracion": duracion},
+        ).get(timeout=5)
+    except Exception as exc:  # noqa: BLE001
+        raise ValueError(f"Kafka no responde ({type(exc).__name__})") from exc
+    log(f"PETICION enviada a Central: {fo_id} durante {duracion} s")
+
+
 def parar_riego(nuevo_motivo="MANUAL") -> bool:
     global motivo
     with estado_lock:
@@ -263,6 +281,12 @@ def procesar_orden(datos, broker):
         with estado_lock:
             bloqueada = False
         log("ACTIVAR recibido", "OK")
+
+    elif tipo == "AUTORIZADO":   # Central autoriza un riego en esta WS (el REGAR llega aparte)
+        log(f"Central AUTORIZA el riego de {datos.get('fo_id')} ({datos.get('duracion')} s)", "OK")
+
+    elif tipo == "DENEGADO":     # Central deniega un riego pedido para esta WS
+        log(f"Central DENIEGA el riego de {datos.get('fo_id')}: {datos.get('motivo')}", "AVISO")
 
 
 def consumir_ordenes(broker: str):
@@ -328,22 +352,11 @@ def estado_web():
 
 def acciones_web(broker):
     def solicitar(cuerpo):
-        fo_id = str(cuerpo.get("fo_id") or "").strip()
         try:
             duracion = int(cuerpo.get("duracion") or 0)
         except (TypeError, ValueError):
             duracion = 0
-        if not ws_id:
-            raise ValueError("La estación aún no tiene Id (falta el monitor)")
-        if not fo_id or not 0 < duracion <= 3600:
-            raise ValueError("Operario y duración (1-3600 s) obligatorios")
-        prod = productor_engine(broker)
-        try:
-            prod.send(TOPIC_PETICIONES, {"tipo": "PETICION", "fo_id": fo_id, "ws_id": ws_id,
-                                         "duracion": duracion}).get(timeout=5)
-        except Exception as exc:  # noqa: BLE001
-            raise ValueError(f"Kafka no responde: {exc}") from exc
-        log(f"PETICION enviada a Central: {fo_id} durante {duracion} s")
+        pedir_riego_a_central(broker, str(cuerpo.get("fo_id") or "").strip(), duracion)
         return {"ok": True, "mensaje": "Solicitud enviada a CENTRAL"}
 
     def parar(_cuerpo):
@@ -364,7 +377,7 @@ def acciones_web(broker):
 # ---------------------- Menú (hilo principal) --------------------------------
 def menu(broker: str):
     """Menú de teclado en el hilo principal."""
-    ayuda = "f=averia  r=reparada  m=riego manual  s=parar  q=salir"
+    ayuda = "f=averia  r=reparada  m=pedir riego (a CENTRAL)  s=parar  q=salir"
     print(ayuda)
     while True:
         try:
@@ -383,15 +396,12 @@ def menu(broker: str):
             poner_averia(False)
 
         elif opcion == "m":
-            texto = input("duracion (segundos): ").strip()
+            fo_id = input("operario (p. ej. FO1): ").strip()
             try:
-                duracion = int(texto)
-                if duracion <= 0:
-                    raise ValueError
-            except ValueError:
-                print("duracion invalida, debe ser un entero > 0")
-                continue
-            iniciar_riego(duracion, "MANUAL", broker)
+                duracion = int(input("duracion (segundos): ").strip())
+                pedir_riego_a_central(broker, fo_id, duracion)
+            except ValueError as exc:
+                print(f"No se puede pedir el riego: {exc or 'duración entera > 0'}")
 
         elif opcion == "s":
             if parar_riego("MANUAL"):

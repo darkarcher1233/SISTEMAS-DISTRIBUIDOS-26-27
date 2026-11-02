@@ -57,6 +57,12 @@ def crear_tablas():
                 "INSERT OR IGNORE INTO operarios(id, nombre) VALUES (?, ?)",
                 operarios,
             )
+            # Las dos WS del escenario mínimo (docker-compose.ws.yml) vienen dadas de alta.
+            # Las demás se dan de alta desde Central (menú opción 5 o panel web).
+            conn.executemany(
+                "INSERT OR IGNORE INTO estaciones(id, ubicacion, estado) VALUES (?, ?, 'DESCONECTADA')",
+                [("WS1", "Parque Norte"), ("WS2", "Parque Sur")],
+            )
             conn.commit()
         finally:
             conn.close()
@@ -165,5 +171,19 @@ def guardar_operario(id_operario, nombre):
                 (id_operario.lower(), nombre),
             )
             conn.commit()
+        finally:
+            conn.close()
+
+
+def volumen_por_ws():
+    """{ws_id: litros suministrados en total} sumando todos los riegos terminados."""
+    _ensure_tables()
+    with DB_LOCK:
+        conn = _connect()
+        try:
+            filas = conn.execute(
+                "SELECT ws_id, COALESCE(SUM(volumen_total), 0) AS total FROM riegos GROUP BY ws_id"
+            ).fetchall()
+            return {fila["ws_id"]: fila["total"] for fila in filas}
         finally:
             conn.close()

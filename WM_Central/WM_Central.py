@@ -10,7 +10,8 @@ USO
 SEMANA 1: solo sockets (Tarjeta: "WM_Central: servidor de sockets + registro de WS")
   - Servidor concurrente: un hilo por cada WM_WS_M conectado. SIN límite de conexiones
   - Estado en memoria: dict {ws_id: {...}} protegido con threading.Lock
-  - REG#id#ubicacion -> alta o actualización -> DISPONIBLE, responder OK
+  - REG#id#ubicacion -> autenticación: OK si la WS está dada de alta (menú 5 o panel) y no
+    está ya conectada; si no, ERROR#WS no registrada / ERROR#WS ya conectada desde otro Monitor
   - FUGA#id -> FUGA   ·   RESUELTA#id -> DISPONIBLE
   - Si se cierra el socket de un Monitor -> DESCONECTADA
   - Imprimir la tabla de estados cada vez que cambie algo
@@ -45,6 +46,7 @@ from WM_Central.db import (
     get_operarios,
     guardar_estacion,
     guardar_operario,
+    volumen_por_ws,
     guardar_riego,
     operario_existe,
     set_estado,
@@ -135,8 +137,38 @@ def imprimir_tabla():
     print("\n".join(lineas), flush=True)
 
 
+def alta_ws(ws_id, ubicacion):
+    """Alta de una WS nueva en Central (menú o panel). Queda DESCONECTADA hasta que su Monitor
+    se autentique con REG. Devuelve None si va bien o el motivo del error."""
+    ws_id, ubicacion = ws_id.strip(), ubicacion.strip()
+    if not ws_id or not ubicacion or any(c in ws_id for c in "# ") or "#" in ubicacion:
+        return "Id (sin espacios ni #) y ubicación (sin #) obligatorios"
+    with lock:
+        if ws_id in estaciones:
+            return f"{ws_id} ya está dada de alta"
+        estaciones[ws_id] = _nueva_ws(ubicacion, DESCONECTADA)
+        guardar_estacion(ws_id, ubicacion)
+        set_estado(ws_id, DESCONECTADA)
+        log(f"ALTA: {ws_id} dada de alta en {ubicacion}; esperando a que su Monitor se autentique", "OK")
+        imprimir_tabla()
+    return None
+
+
+def autenticar_ws(conn, ws_id, ubicacion):
+    """REG de un Monitor: solo se aceptan WS dadas de alta y que no estén ya conectadas.
+    Devuelve None si se acepta (y la deja DISPONIBLE) o el motivo de la denegación."""
+    with lock:
+        if ws_id not in estaciones:
+            return "WS no registrada"
+        actual = conexiones.get(ws_id)
+        if actual is not None and actual is not conn:
+            return "WS ya conectada desde otro Monitor"
+    registrar_ws(conn, ws_id, ubicacion)
+    return None
+
+
 def registrar_ws(conn, ws_id, ubicacion):
-    """REG: da de alta la WS (o la actualiza si ya existía) y la deja DISPONIBLE."""
+    """Deja la WS DISPONIBLE con esta conexión (la crea si no existía: solo lo hacen los tests)."""
     with lock:
         ya_existia = ws_id in estaciones
         anterior = conexiones.get(ws_id)
@@ -526,7 +558,7 @@ def consumir_peticiones(broker):
 
 def menu(broker):
     """Menú interactivo del operador de Central para gestión manual de las estaciones."""
-    ayuda = "1 iniciar  2 bloquear  3 activar  4 estado  0 salir del menú  (también desde el panel web)"
+    ayuda = "1 iniciar  2 bloquear  3 activar  4 estado  5 alta WS  0 salir del menú  (también desde el panel web)"
     print(ayuda)
     while True:
         try:
@@ -557,6 +589,12 @@ def menu(broker):
             elif opcion in ("4", "estado", "e"):
                 with lock:
                     imprimir_tabla()
+
+            elif opcion in ("5", "alta"):
+                ws_id = input("ws_id nuevo: ").strip()
+                ubicacion = input("ubicación (parque o jardín): ").strip()
+                error = alta_ws(ws_id, ubicacion)
+                print(error or f"{ws_id} dada de alta: ya puede conectarse su Monitor")
 
             elif opcion in ("0", "q", "salir"):
                 print("[Central] saliendo del menú")
@@ -604,7 +642,7 @@ def estado_panel():
     with lock:
         monitores = len(conexiones)
     central = {**info, "monitores": monitores}
-    return foto_estado(estaciones, lock, eventos, central, get_operarios())
+    return foto_estado(estaciones, lock, eventos, central, get_operarios(), volumen_por_ws())
 
 
 def accion_orden(cuerpo):
@@ -633,6 +671,15 @@ def accion_orden(cuerpo):
     return {"ok": True, "mensaje": f"{verbo}: {nombre} ({hechas} de {total})" if total > 1 else f"{verbo}: {nombre}"}
 
 
+def accion_alta_ws(cuerpo):
+    """POST /api/estaciones: alta de una WS."""
+    ws_id = str(cuerpo.get("id") or "").strip()
+    error = alta_ws(ws_id, str(cuerpo.get("ubicacion") or ""))
+    if error:
+        raise ValueError(error)
+    return {"ok": True, "mensaje": f"{ws_id} dada de alta: ya puede conectarse su Monitor"}
+
+
 def accion_operario(cuerpo):
     """POST /api/operarios: alta de un operario."""
     fo_id = str(cuerpo.get("id") or "").strip()
@@ -645,10 +692,14 @@ def accion_operario(cuerpo):
 
 
 # ---------------------- Sockets con los Monitor -------------------------------
+# Última denegación avisada por WS: un Monitor denegado reintenta cada 3 s y no queremos
+# una línea nueva en la consola y en el panel cada vez, solo cuando cambia el motivo.
+_denegaciones = {}
+
+
 def atender_monitor(conn, addr):
     """Hilo que atiende a un WM_WS_M mientras su socket siga abierto."""
     origen = f"{addr[0]}:{addr[1]}"
-    log(f"NUEVA CONEXION desde {origen}")
     ws_id = None  # la WS de este Monitor: se sabe cuando llega su REG
 
     try:
@@ -667,9 +718,18 @@ def atender_monitor(conn, addr):
                     log(f"REG rechazado desde {origen}: esta conexión ya es la de {ws_id}", "AVISO")
                     enviar(conn, f"ERROR#Esta conexion ya esta registrada como {ws_id}")
                 else:
-                    ws_id = partes[1]
-                    registrar_ws(conn, ws_id, partes[2])
-                    enviar(conn, "OK")
+                    motivo = autenticar_ws(conn, partes[1], partes[2])
+                    if motivo is None:
+                        ws_id = partes[1]
+                        _denegaciones.pop(ws_id, None)
+                        log(f"CONEXION del Monitor de {ws_id} desde {origen}", panel=False)
+                        enviar(conn, "OK")
+                    else:
+                        if _denegaciones.get(partes[1]) != motivo:
+                            _denegaciones[partes[1]] = motivo
+                            log(f"REG DENEGADO: {partes[1]} desde {origen}: {motivo} "
+                                "(el Monitor reintentará; no se repite el aviso)", "AVISO")
+                        enviar(conn, f"ERROR#{motivo}")
 
             elif partes[0] in ("FUGA", "RESUELTA") and len(partes) == 2:
                 # FUGA#<id_ws> -> FUGA  ·  RESUELTA#<id_ws> -> DISPONIBLE  (no se responde nada)
@@ -685,7 +745,8 @@ def atender_monitor(conn, addr):
         log(f"ERROR en la conexión {origen}: {e}")
     finally:
         conn.close()
-        log(f"CONEXION CERRADA {origen}", panel=False)
+        if ws_id is not None:
+            log(f"CONEXION CERRADA del Monitor de {ws_id} ({origen})", panel=False)
         desconectar_ws(conn, ws_id)
 
 
@@ -726,7 +787,8 @@ def main():
         threading.Thread(target=hilo, args=(broker,), daemon=True).start()
 
     # panel web: http://localhost:8080 (PANEL_PORT)
-    iniciar_panel(estado_panel, {"orden": accion_orden, "operarios": accion_operario})
+    iniciar_panel(estado_panel, {"orden": accion_orden, "operarios": accion_operario,
+                                 "estaciones": accion_alta_ws})
 
     try:
         while True:

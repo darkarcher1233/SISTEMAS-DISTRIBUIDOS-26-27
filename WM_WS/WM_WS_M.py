@@ -33,9 +33,9 @@ def avisar(texto):
     print(f"[{time.strftime('%H:%M:%S')}] {texto}", flush=True)
     if "KO" in texto or "FUGA" in texto:
         nivel = "ALERTA"
-    elif "perdida" in texto or "No se pudo" in texto or "rechaz" in texto or "desconectado" in texto:
+    elif "perdida" in texto or "Imposible" in texto or "denegado" in texto or "desconectado" in texto:
         nivel = "AVISO"
-    elif "registrada" in texto or "OK" in texto or "RESUELTA" in texto or "conectado desde" in texto:
+    elif "autenticada" in texto or "OK" in texto or "RESUELTA" in texto or "conectado desde" in texto:
         nivel = "OK"
     else:
         nivel = "INFO"

@@ -12,7 +12,7 @@ Implementación: `common/sockets_utils.py`.
 
 | Sentido | Mensaje | Respuesta | Significado |
 |---|---|---|---|
-| Monitor → Central | `REG#<ws_id>#<ubicacion>` | `OK` / `ERROR#<motivo>` | Alta o autenticación de la WS → DISPONIBLE |
+| Monitor → Central | `REG#<ws_id>#<ubicacion>` | `OK` / `ERROR#<motivo>` | Autenticación de la WS → DISPONIBLE. Motivos de `ERROR`: `WS no registrada` (no está dada de alta en Central), `WS ya conectada desde otro Monitor`, formato incorrecto. El Monitor reintenta cada 3 s |
 | Monitor → Central | `FUGA#<ws_id>` | – | El Engine no responde o responde KO → FUGA |
 | Monitor → Central | `RESUELTA#<ws_id>` | – | El Engine vuelve a OK → DISPONIBLE |
 | (socket cerrado) | – | – | Central marca la WS como DESCONECTADA |
@@ -45,6 +45,11 @@ Mensajes en JSON; todos llevan `"tipo"`. Implementación: `common/kafka_utils.py
 | `telemetria` | WS → Central | `TELEMETRIA`, `FIN` |
 
 Cada WS y cada FO lee todo `ordenes` y se queda solo con lo que lleva su `ws_id` / `fo_id`.
+El Engine también enseña los `AUTORIZADO` / `DENEGADO` de su `ws_id` (así se ve en la estación la
+respuesta a un riego pedido desde su menú `m` o su pantalla, que envían una `PETICION` como un FO).
+
+**Alta de WS**: solo se autentican las WS dadas de alta en Central (menú opción 5 o panel web,
+`POST /api/estaciones`). WS1 y WS2 (escenario mínimo) vienen dadas de alta en una BD nueva.
 
 ### Ejemplos de JSON (semana 2)
 

@@ -334,6 +334,22 @@ def api_todo(cuerpo):
     return {"ok": True, "mensaje": "Arrancando todo"}
 
 
+def alta_en_central(ws_id, ubicacion):
+    """Da de alta la WS en Central por su panel web (local o remoto). Devuelve un texto para el aviso."""
+    base = f"http://127.0.0.1:{PUERTO_PANEL}" if ajustes["modo"] == "local" else (ajustes.get("panel") or "").rstrip("/")
+    if not base:
+        return "Dala de alta en el panel de CENTRAL (falta su dirección en Ajustes)"
+    peticion = urllib.request.Request(f"{base}/api/estaciones", json.dumps({"id": ws_id, "ubicacion": ubicacion}).encode(),
+                                      {"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(peticion, timeout=3) as r:
+            return json.load(r).get("mensaje", "dada de alta en CENTRAL")
+    except urllib.error.HTTPError as exc:
+        return json.load(exc).get("error", "CENTRAL no la ha dado de alta")   # p. ej. "ya está dada de alta"
+    except OSError:
+        return "CENTRAL no responde: dala de alta en su panel cuando esté en marcha"
+
+
 def api_estacion(cuerpo):
     ws_id = _id_valido(cuerpo.get("id"), "Id de la estación")
     ubicacion = str(cuerpo.get("ubicacion") or "").strip()
@@ -345,8 +361,10 @@ def api_estacion(cuerpo):
         ajustes["estaciones"].append({"id": ws_id, "ubicacion": ubicacion, "n": _hueco(ajustes["estaciones"])})
         guardar_ajustes()
         crear_procesos()
+    alta = alta_en_central(ws_id, ubicacion)   # sin alta, Central denegaría su REG ("WS no registrada")
+    with lock:
         hacer(f"ws:{ws_id}", "arrancar")
-    return {"ok": True, "mensaje": f"Estación {ws_id} arrancando", "vista": f"ws/{ws_id}"}
+    return {"ok": True, "mensaje": f"Estación {ws_id} arrancando. {alta}", "vista": f"ws/{ws_id}"}
 
 
 def api_operario(cuerpo):

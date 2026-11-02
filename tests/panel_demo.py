@@ -63,7 +63,7 @@ def alta(cuerpo):
 
 
 central = {"kafka": "conectado", "broker": "demo:9092", "monitores": 4, "puerto_sockets": 5050, "inicio": ahora}
-if iniciar_panel(lambda: foto_estado(estaciones, lock, eventos, central, operarios),
+if iniciar_panel(lambda: foto_estado(estaciones, lock, eventos, central, operarios, {"WS1": 152.4, "WS2": 37.0}),
                  {"orden": orden, "operarios": alta}) is None:
     raise SystemExit(1)
 

@@ -85,6 +85,16 @@ details.bloque summary { cursor: pointer; font-weight: 600; }
     </section>
 
     <details class="bloque">
+      <summary>Dar de alta una estación</summary>
+      <p class="tenue" style="margin:10px 0">Solo se autentican las WS dadas de alta. Quedará <b>Desconectada</b> hasta que se conecte su Monitor.</p>
+      <form class="alta" id="form-alta-ws">
+        <input id="ws-alta-id" placeholder="Id, p. ej. WS3" required aria-label="Id de la estación">
+        <input id="ws-alta-ubic" placeholder="Parque o jardín" required aria-label="Ubicación de la estación">
+        <button class="boton">Dar de alta</button>
+      </form>
+    </details>
+
+    <details class="bloque">
       <summary>Operarios dados de alta</summary>
       <ul class="operarios" id="operarios"></ul>
       <form class="alta" id="form-alta">
@@ -109,7 +119,7 @@ function textoFicha(e) {
     case 'FUGA': return esc(e.motivo_fuga || 'Fuga detectada');
     case 'FUERA_SERVICIO': return 'Bloqueada por CENTRAL';
     case 'DESCONECTADA': return 'Sin conexión con CENTRAL';
-    default: return `${num(0)} L/min<br>Último riego ${hace(e.ultimo_riego, datos.ahora)}`;
+    default: return `${num(0)} L/min<br>Último riego ${hace(e.ultimo_riego, datos.ahora)}<br>Total ${num(e.total)} L`;
   }
 }
 
@@ -161,7 +171,7 @@ function pintarDetalle() {
                ['Tiempo', e.duracion ? `${e.segundos} de ${e.duracion} s<div class="progreso"><i style="width:${Math.min(100, 100 * e.segundos / e.duracion)}%"></i></div>` : `${e.segundos} s`]);
   }
   if (e.estado === 'FUGA') filas.push(['Avería', esc(e.motivo_fuga)]);
-  filas.push(['Último riego', hace(e.ultimo_riego, datos.ahora)]);
+  filas.push(['Agua suministrada', `${num(e.total, 2)} L en total`], ['Último riego', hace(e.ultimo_riego, datos.ahora)]);
   fijarHtml($('#detalle'), `<p><b style="font-size:1.3rem">${esc(e.id)}</b>&ensp;<span class="pastilla estado-${CLASE[e.estado] === 'regando' ? 'disponible' : CLASE[e.estado]}">${ETIQUETA[e.estado]}</span></p>
     <dl class="ficha">${filas.map(([t, v]) => `<dt>${t}</dt><dd>${v}</dd>`).join('')}</dl>`);
   $('#b-regar').disabled = e.estado !== 'DISPONIBLE';
@@ -197,6 +207,12 @@ document.querySelectorAll('[data-todas]').forEach(b => b.addEventListener('click
   const texto = {regar: 'Iniciar un riego', bloquear: 'Bloquear', activar: 'Activar'}[accion];
   if (confirm(`¿${texto} en todas las estaciones?`)) orden({accion, ws: '*', duracion: +$('#dur-todas').value});
 }));
+$('#form-alta-ws').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const r = await enviar('/api/estaciones', {id: $('#ws-alta-id').value.trim(), ubicacion: $('#ws-alta-ubic').value.trim()});
+  if (r.ok) ev.target.reset();
+  refrescar();
+});
 $('#form-alta').addEventListener('submit', async ev => {
   ev.preventDefault();
   const r = await enviar('/api/operarios', {id: $('#alta-id').value.trim(), nombre: $('#alta-nombre').value.trim()});
