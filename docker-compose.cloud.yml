@@ -1,0 +1,70 @@
+# docker-compose de la PARTE CLOUD (EC2 de AWS): Kafka + WM_Central (+ SQLite en un volumen)
+#
+# Uso en la EC2 (desde la raíz del repo, con el .env creado):   bash deploy/deploy_ec2.sh
+#   o a mano:   docker compose -f docker-compose.cloud.yml up -d --build
+#   menú de Central:   docker attach wm_central     (salir sin pararla: Ctrl+P y luego Ctrl+Q)
+#
+# Variables (.env de la EC2):
+#   PUBLIC_IP     IP pública de la EC2. Kafka la anuncia a los PCs del laboratorio (OBLIGATORIA)
+#   KAFKA_PORT    puerto de Kafka para los PCs del laboratorio   (por defecto 9092)
+#   CENTRAL_PORT  puerto de sockets de Central para los Monitor  (por defecto 5050)
+#   PANEL_PORT    puerto del panel web de Central                (por defecto 8080)
+#
+# Kafka tiene DOS "puertas" (listeners):
+#   INTERNAL  kafka:29092              -> para Central, que está en la misma red de Docker
+#   EXTERNAL  ${PUBLIC_IP}:${KAFKA_PORT} -> para los WS y FO del laboratorio (por Internet)
+# Un cliente de Kafka primero pregunta al broker "¿dónde estás?" y el broker le contesta con la
+# dirección ANUNCIADA de la puerta por la que entró. Por eso cada puerta anuncia una dirección
+# que tenga sentido para quien entra por ella.
+
+name: wm-cloud
+
+services:
+  kafka:
+    image: bitnamilegacy/kafka:3.7.0
+    container_name: kafka
+    restart: unless-stopped
+    ports:
+      - "${KAFKA_PORT:-9092}:9092"          # solo se publica la puerta EXTERNAL
+    environment:
+      # KRaft: un único nodo que hace de broker y de controlador (sin ZooKeeper)
+      KAFKA_CFG_NODE_ID: "0"
+      KAFKA_CFG_PROCESS_ROLES: controller,broker
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 0@kafka:9093
+      KAFKA_CFG_LISTENERS: INTERNAL://:29092,EXTERNAL://:9092,CONTROLLER://:9093
+      KAFKA_CFG_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://${PUBLIC_IP:?Falta PUBLIC_IP en el .env}:${KAFKA_PORT:-9092}
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: INTERNAL
+      # Un solo broker: no puede haber más de 1 copia de cada dato
+      KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      # t3.micro = 1 GB de RAM: Kafka no puede quedarse más de 512 MB
+      KAFKA_HEAP_OPTS: -Xmx512m -Xms512m
+    volumes:
+      - kafka_datos:/bitnami/kafka          # topics y offsets sobreviven a reinicios
+
+  wm_central:
+    build: .
+    image: sd-app
+    container_name: wm_central
+    restart: unless-stopped
+    depends_on:
+      - kafka                               # solo el orden de arranque: Central reintenta Kafka sola
+    command: ["python", "-m", "WM_Central.WM_Central", "5050", "kafka:29092"]
+    ports:
+      - "${CENTRAL_PORT:-5050}:5050"        # sockets de los Monitor
+      - "${PANEL_PORT:-8080}:8080"          # panel web
+    environment:
+      PANEL_PORT: "8080"                    # dentro del contenedor (escucha en 0.0.0.0)
+      WATER_DB: /data/water.db              # la BD SQLite vive en el volumen
+    volumes:
+      - central_datos:/data
+    stdin_open: true                        # menú de Central con docker attach
+    tty: true
+
+volumes:
+  kafka_datos:
+  central_datos:

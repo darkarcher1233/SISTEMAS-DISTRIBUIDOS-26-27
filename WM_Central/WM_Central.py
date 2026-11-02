@@ -55,6 +55,7 @@ from common.kafka_utils import (
     TOPIC_PETICIONES,
     TOPIC_TELEMETRIA,
     consumidor,
+    crear_topics,
     productor,
 )
 from common.sockets_utils import enviar, recibir
@@ -495,6 +496,21 @@ def _consumir(broker, topic, group_id, procesar):
         time.sleep(REINTENTO_KAFKA)
 
 
+def asegurar_topics(broker):
+    """Hilo: crea los topics del sistema si no existen. Si Kafka aún no responde
+    (p. ej. arrancan a la vez en la EC2), lo reintenta cada pocos segundos."""
+    while True:
+        try:
+            creados = crear_topics(broker)
+            if creados:
+                log(f"Topics creados en Kafka: {', '.join(creados)}", "OK")
+            return
+        except Exception as exc:  # noqa: BLE001
+            print(f"[{time.strftime('%H:%M:%S')}] Topics: Kafka aún no responde "
+                  f"({type(exc).__name__}); reintentando", flush=True)
+            time.sleep(REINTENTO_KAFKA)
+
+
 def consumir_telemetria(broker):
     """Hilo consumidor del topic 'telemetria' de Kafka."""
     prod = productor(broker)
@@ -555,6 +571,7 @@ def publicar_estado_periodico(broker, pausa=2.0):
     """Publica ESTADO_WS cada 2 s para que los FO sepan qué estaciones están disponibles.
     De paso sirve de latido para saber si Kafka responde (lo enseña el panel)."""
     prod = None
+    avisado = False   # ya se ha avisado de que Kafka no responde: no repetirlo cada 2 s
     while True:
         try:
             if prod is None:
@@ -564,10 +581,15 @@ def publicar_estado_periodico(broker, pausa=2.0):
             if info["kafka"] != "conectado":
                 log(f"Kafka conectado ({broker})", "OK")
             info["kafka"] = "conectado"
+            avisado = False
         except Exception as exc:  # noqa: BLE001
-            if info["kafka"] != "sin conexión":
-                log(f"ERROR Kafka ({broker}): {exc}. Se reintenta solo")
-            info["kafka"] = "sin conexión"
+            if not avisado:
+                if info["kafka"] == "conectando":   # nunca ha conectado: Kafka está arrancando
+                    log(f"AVISO: esperando a Kafka ({broker}); se reintenta solo")
+                else:
+                    log(f"ERROR Kafka ({broker}): {type(exc).__name__}. Se reintenta solo")
+                    info["kafka"] = "sin conexión"
+                avisado = True
             if prod is not None:
                 try:
                     prod.close()
@@ -700,7 +722,7 @@ def main():
     with lock:
         imprimir_tabla()
 
-    for hilo in (consumir_telemetria, consumir_peticiones, publicar_estado_periodico, menu):
+    for hilo in (asegurar_topics, consumir_telemetria, consumir_peticiones, publicar_estado_periodico, menu):
         threading.Thread(target=hilo, args=(broker,), daemon=True).start()
 
     # panel web: http://localhost:8080 (PANEL_PORT)

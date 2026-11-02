@@ -34,6 +34,8 @@ prompts/                    Prompts de IA usados (obligatorio)
 Nombres.txt                 Nombres de los integrantes del grupo
 ejemplos/                   Ejemplos de sockets de clase (no se entregan)
 Dockerfile                  Imagen única para todos los módulos
+docker-compose.cloud.yml    Parte CLOUD (EC2): Kafka + WM_Central + SQLite  -> docs/DESPLIEGUE_AWS.md
+deploy/deploy_ec2.sh        Despliegue en la EC2 (git pull + compose up); lo usa .github/workflows/deploy.yml
 docker-compose.yml          Kafka en local (desarrollo)
 docker-compose.ws.yml       Laboratorio PC 2: 2 WS
 docker-compose.fo.yml       Laboratorio PC 1: 2 FO

@@ -6,7 +6,8 @@
 #   docker attach ws1_e        (menú del Engine; salir sin matarlo: Ctrl+P y luego Ctrl+Q)
 #
 # - Todos usan la misma imagen (sd-app) del Dockerfile común; solo cambia "command".
-# - ${CENTRAL} y ${KAFKA_BROKER} salen del .env.
+# - ${CENTRAL} y ${KAFKA_BROKER} salen del .env: Central y Kafka de la EC2
+#   (CENTRAL=<IP_EC2>:5050, KAFKA_BROKER=<IP_EC2>:9092). Si faltan, compose avisa y no arranca.
 # - El Engine encuentra a su Monitor por el NOMBRE del servicio (ws1_m:6000): Docker Compose
 #   crea una red propia con DNS interno. Los dos Monitor escuchan en el 6000, pero cada uno
 #   en su contenedor, así que no chocan.
@@ -21,7 +22,7 @@ services:
     image: sd-app
     container_name: ws1_m
     ports: ["8100:8100"]   # pantalla web
-    command: ["python", "-m", "WM_WS.WM_WS_M", "6000", "${CENTRAL}", "WS1", "Parque Norte"]
+    command: ["python", "-m", "WM_WS.WM_WS_M", "6000", "${CENTRAL:?Falta CENTRAL en el .env}", "WS1", "Parque Norte"]
     extra_hosts:
       - "host.docker.internal:host-gateway"   # para Linux; en Docker Desktop ya existe
     restart: on-failure
@@ -30,7 +31,7 @@ services:
     image: sd-app
     container_name: ws1_e
     ports: ["8200:8200"]   # pantalla web
-    command: ["python", "-m", "WM_WS.WM_WS_E", "${KAFKA_BROKER}", "ws1_m:6000"]
+    command: ["python", "-m", "WM_WS.WM_WS_E", "${KAFKA_BROKER:?Falta KAFKA_BROKER en el .env}", "ws1_m:6000"]
     depends_on:
       - ws1_m
     restart: on-failure
@@ -41,7 +42,7 @@ services:
     image: sd-app
     container_name: ws2_m
     ports: ["8101:8100"]   # pantalla web
-    command: ["python", "-m", "WM_WS.WM_WS_M", "6000", "${CENTRAL}", "WS2", "Parque Sur"]
+    command: ["python", "-m", "WM_WS.WM_WS_M", "6000", "${CENTRAL:?Falta CENTRAL en el .env}", "WS2", "Parque Sur"]
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: on-failure
@@ -50,7 +51,7 @@ services:
     image: sd-app
     container_name: ws2_e
     ports: ["8201:8200"]   # pantalla web
-    command: ["python", "-m", "WM_WS.WM_WS_E", "${KAFKA_BROKER}", "ws2_m:6000"]
+    command: ["python", "-m", "WM_WS.WM_WS_E", "${KAFKA_BROKER:?Falta KAFKA_BROKER en el .env}", "ws2_m:6000"]
     depends_on:
       - ws2_m
     restart: on-failure
