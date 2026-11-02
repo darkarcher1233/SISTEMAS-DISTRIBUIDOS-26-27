@@ -30,3 +30,6 @@ docs/*.pdf
 
 # Claves SSH de AWS: NUNCA al repo
 *.pem
+
+# Riego en curso y FIN pendientes del Engine (WM_WS_E) cuando se ejecuta sin Docker
+datos/

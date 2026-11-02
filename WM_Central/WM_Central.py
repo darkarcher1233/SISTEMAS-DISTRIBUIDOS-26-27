@@ -12,7 +12,8 @@ SEMANA 1: solo sockets (Tarjeta: "WM_Central: servidor de sockets + registro de 
   - Estado en memoria: dict {ws_id: {...}} protegido con threading.Lock
   - REG#id#ubicacion -> autenticación: OK si la WS está dada de alta (menú 5 o panel) y no
     está ya conectada; si no, ERROR#WS no registrada / ERROR#WS ya conectada desde otro Monitor
-  - FUGA#id -> FUGA   ·   RESUELTA#id -> DISPONIBLE
+  - FUGA#id -> FUGA   ·   RESUELTA#id -> DISPONIBLE   ·   VIVO#id cada 2 s (latido)
+  - Sin ningún mensaje del Monitor en TIMEOUT_VIDA s (o socket cerrado) -> DESCONECTADA
   - Si se cierra el socket de un Monitor -> DESCONECTADA
   - Imprimir la tabla de estados cada vez que cambie algo
 
@@ -72,6 +73,8 @@ ESTADOS = (DISPONIBLE, REGANDO, FUGA, FUERA_SERVICIO, DESCONECTADA)
 
 OPERARIO_CENTRAL = "CENTRAL"   # fo_id de los riegos ordenados desde el menú / panel de Central
 REINTENTO_KAFKA = 3            # segundos entre reintentos si Kafka no responde
+TIMEOUT_VIDA = 6               # s sin ningún mensaje del Monitor (latido VIVO cada 2 s) -> DESCONECTADA
+PETICION_CADUCA = 30           # s: una PETICION más vieja (p. ej. enviada con Central caída) se deniega
 
 # Estado de todas las WS, en memoria (y en SQLite):
 #   {ws_id: {"ubicacion", "estado", "caudal", "volumen", "operario",
@@ -118,10 +121,29 @@ def _nueva_ws(ubicacion, estado):
 
 
 def _limpiar_riego(ws):
+    """Quita los datos del riego en curso. El operario NO se borra aquí: si el riego se corta
+    (Monitor o Engine caídos) el FIN llega más tarde y hay que saber a qué FO mandar el RESUMEN.
+    Lo borra el propio FIN."""
     ws["caudal"] = 0.0
-    ws["operario"] = None
     ws["inicio_riego"] = None
     ws["duracion"] = 0
+
+
+_prod_avisos = None
+
+
+def _avisar_fo(fo_id, ws_id, motivo):
+    """Avisa al FO de un riego afectado por una avería o una desconexión (tipo AVISO en 'ordenes').
+    El RESUMEN con el volumen real llegará cuando la WS envíe su FIN."""
+    global _prod_avisos
+    if not fo_id or fo_id == OPERARIO_CENTRAL or not info.get("broker"):
+        return
+    try:
+        if _prod_avisos is None:
+            _prod_avisos = productor(info["broker"], max_block_ms=5000)
+        _emitir_orden(_prod_avisos, {"tipo": "AVISO", "fo_id": fo_id, "ws_id": ws_id, "motivo": motivo})
+    except Exception as exc:  # noqa: BLE001 - Kafka caído: el FO lo sabrá por el RESUMEN
+        log(f"AVISO: no se pudo avisar a {fo_id}: {type(exc).__name__}")
 
 
 def imprimir_tabla():
@@ -219,6 +241,7 @@ def cambiar_estado(conn_o_ws_id, ws_id=None, nuevo_estado=None):
 
         ws = estaciones[ws_id]
         estado_anterior = ws["estado"]
+        afectado = None
         if nuevo_estado == estado_anterior == FUGA:
             return True   # ya se sabía (p. ej. por el FIN del riego): no se repite
         if nuevo_estado in ESTADOS:
@@ -226,6 +249,7 @@ def cambiar_estado(conn_o_ws_id, ws_id=None, nuevo_estado=None):
             if nuevo_estado == DISPONIBLE:
                 ws["volumen"] = 0.0
                 ws["motivo_fuga"] = None
+                ws["operario"] = None   # un FIN pendiente trae su propio operario
                 _limpiar_riego(ws)
             elif nuevo_estado == FUGA:
                 ws["motivo_fuga"] = "Avería avisada por el monitor"
@@ -233,7 +257,10 @@ def cambiar_estado(conn_o_ws_id, ws_id=None, nuevo_estado=None):
             set_estado(ws_id, nuevo_estado)
             log(f"ESTADO: {ws_id} {estado_anterior} -> {nuevo_estado}")
             imprimir_tabla()
-        return True
+            afectado = ws.get("operario") if estado_anterior == REGANDO and nuevo_estado == FUGA else None
+    if afectado:   # fuera del lock: enviar por Kafka puede tardar
+        _avisar_fo(afectado, ws_id, "Avería en la estación: el riego se ha interrumpido")
+    return True
 
 
 def desconectar_ws(conn, ws_id):
@@ -250,6 +277,9 @@ def desconectar_ws(conn, ws_id):
         set_estado(ws_id, DESCONECTADA)
         log(f"ESTADO: {ws_id} {estado_anterior} -> {DESCONECTADA}")
         imprimir_tabla()
+        afectado = estaciones[ws_id].get("operario") if estado_anterior == REGANDO else None
+    if afectado:
+        _avisar_fo(afectado, ws_id, "La estación ha perdido su monitor: el riego termina")
 
 
 def procesar_telemetria(mensaje, prod=None):
@@ -296,7 +326,10 @@ def procesar_telemetria(mensaje, prod=None):
         if mensaje.get("tipo") == "FIN":
             volumen = float(mensaje.get("volumen", ws.get("volumen", 0.0)))
             motivo = mensaje.get("motivo", "FIN")
-            operario = ws.get("operario")
+            # El Engine manda el operario en el FIN: así funciona aunque Central se haya
+            # reiniciado entre medias y ya no lo tenga en memoria
+            operario = mensaje.get("operario") or ws.get("operario")
+            ws["operario"] = None
             if operario is not None:
                 inicio = mensaje.get("inicio") or datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
                 fin = mensaje.get("fin") or datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
@@ -504,19 +537,26 @@ def ordenar(accion, ws_id, broker, duracion=0):
 
 
 def _consumir(broker, topic, group_id, procesar):
-    """Bucle de un consumidor de Kafka: si Kafka cae, se reintenta cada pocos segundos."""
+    """Bucle de un consumidor de Kafka: si Kafka cae, se reintenta cada pocos segundos.
+
+    No se pierde ninguna transacción: el offset (por dónde va leyendo el grupo) se confirma
+    con commit() DESPUÉS de procesar cada mensaje. Si Central cae a mitad, al volver Kafka le
+    entrega otra vez desde el último mensaje confirmado, incluidos los que llegaron mientras
+    estaba caída (FIN de riegos, PETICION...).
+    procesar(datos, registro): registro es el mensaje de Kafka (para su hora, registro.timestamp)."""
     while True:
         consumer = None
         try:
             # session 6 s (por defecto 45): tras reiniciar Central, se recupera antes el grupo
-            consumer = consumidor(broker, topic, group_id=group_id,
+            consumer = consumidor(broker, topic, group_id=group_id, enable_auto_commit=False,
                                   session_timeout_ms=6000, heartbeat_interval_ms=2000)
             for mensaje in consumer:
                 if isinstance(mensaje.value, dict):
                     try:
-                        procesar(mensaje.value)
+                        procesar(mensaje.value, mensaje)
                     except Exception as exc:  # noqa: BLE001
                         log(f"ERROR procesando mensaje de '{topic}': {exc}")
+                consumer.commit()   # ya procesado: Kafka puede olvidar que nos lo debe
         except Exception as exc:  # noqa: BLE001 - se trata como error de sistema en la consola
             log(f"ERROR Kafka '{topic}' ({broker}): {exc}. Reintentando en {REINTENTO_KAFKA} s")
         finally:
@@ -547,13 +587,32 @@ def consumir_telemetria(broker):
     """Hilo consumidor del topic 'telemetria' de Kafka."""
     prod = productor(broker)
     _consumir(broker, TOPIC_TELEMETRIA, "central_telemetria",
-              lambda datos: procesar_telemetria(datos, prod=prod))
+              lambda datos, _registro: procesar_telemetria(datos, prod=prod))
+
+
+def peticion_caducada(timestamp_ms, ahora=None):
+    """True si la PETICION se envió hace más de PETICION_CADUCA segundos (timestamp de Kafka)."""
+    if not timestamp_ms or timestamp_ms < 0:
+        return False
+    return (ahora if ahora is not None else time.time()) - timestamp_ms / 1000 > PETICION_CADUCA
+
+
+def procesar_peticion_kafka(datos, timestamp_ms, prod=None, broker=None):
+    """PETICION leída de Kafka. Si es vieja (llegó mientras Central estaba caída) se contesta
+    DENEGADO en vez de lanzar un riego que el operario ya no espera: se responde, no se pierde."""
+    if isinstance(datos, dict) and datos.get("tipo") == "PETICION" and peticion_caducada(timestamp_ms):
+        fo_id, ws_id = str(datos.get("fo_id", "")), str(datos.get("ws_id", ""))
+        motivo = "Petición caducada: WM_Central no estaba disponible cuando se envió"
+        log(f"PETICION DENEGADA: {fo_id or '?'} -> {ws_id or '?'}: {motivo}")
+        _emitir_con(prod, broker, {"tipo": "DENEGADO", "fo_id": fo_id, "ws_id": ws_id, "motivo": motivo})
+        return False
+    return procesar_peticion(datos, prod=prod, broker=broker)
 
 
 def consumir_peticiones(broker):
     """Hilo consumidor del topic 'peticiones' de Kafka: valida riegos y reenvía autorizaciones."""
     _consumir(broker, TOPIC_PETICIONES, "central_peticiones",
-              lambda datos: procesar_peticion(datos, broker=broker))
+              lambda datos, registro: procesar_peticion_kafka(datos, registro.timestamp, broker=broker))
 
 
 def menu(broker):
@@ -700,6 +759,9 @@ _denegaciones = {}
 def atender_monitor(conn, addr):
     """Hilo que atiende a un WM_WS_M mientras su socket siga abierto."""
     origen = f"{addr[0]}:{addr[1]}"
+    # El Monitor manda VIVO#<id> cada 2 s: si en TIMEOUT_VIDA s no llega NADA, recibir() lanza
+    # TimeoutError y la WS pasa a DESCONECTADA aunque el socket no se haya cerrado (cable, red...)
+    conn.settimeout(TIMEOUT_VIDA)
     ws_id = None  # la WS de este Monitor: se sabe cuando llega su REG
 
     try:
@@ -731,6 +793,9 @@ def atender_monitor(conn, addr):
                                 "(el Monitor reintentará; no se repite el aviso)", "AVISO")
                         enviar(conn, f"ERROR#{motivo}")
 
+            elif partes[0] == "VIVO":
+                pass   # latido del Monitor: basta con haberlo recibido (reinicia el timeout)
+
             elif partes[0] in ("FUGA", "RESUELTA") and len(partes) == 2:
                 # FUGA#<id_ws> -> FUGA  ·  RESUELTA#<id_ws> -> DISPONIBLE  (no se responde nada)
                 nuevo_estado = FUGA if partes[0] == "FUGA" else DISPONIBLE
@@ -740,9 +805,13 @@ def atender_monitor(conn, addr):
             else:
                 log(f"AVISO: mensaje no válido desde {origen}: '{msg}'")
 
+    except TimeoutError:
+        if ws_id is not None:
+            log(f"AVISO: sin mensajes de vida del Monitor de {ws_id} en {TIMEOUT_VIDA} s")
     except (OSError, ValueError) as e:
         # OSError: la conexión se ha cortado de golpe · ValueError: la cabecera no es un número
-        log(f"ERROR en la conexión {origen}: {e}")
+        if ws_id is not None:
+            log(f"AVISO: conexión con el Monitor de {ws_id} cortada ({type(e).__name__})")
     finally:
         conn.close()
         if ws_id is not None:

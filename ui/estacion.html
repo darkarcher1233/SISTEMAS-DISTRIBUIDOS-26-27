@@ -51,6 +51,7 @@
   <dl class="sistema">
     <div><dt>Monitor</dt><dd id="monitor">–</dd></div>
     <div><dt>Kafka</dt><dd id="kafka">–</dd></div>
+    <div><dt>WM_Central</dt><dd id="central">–</dd></div>
     <div><dt>Orden de CENTRAL</dt><dd id="bloqueo">–</dd></div>
   </dl>
 </header>
@@ -97,7 +98,7 @@
 <script>
 function textoEstado(d) {
   if (!d.ws_id) return ['Sin Id', `Conectando con el monitor ${d.monitor}`];
-  if (!d.con_monitor) return ['Sin monitor', `Se ha perdido el monitor. Reintentando con ${d.monitor}`];
+  if (!d.con_monitor) return ['Averiada', `Sin monitor: el riego se corta y no se admiten riegos (ni manuales). Reintentando con ${d.monitor}`];
   switch (d.estado) {
     case 'FUGA': return ['Fuga', 'El sensor detecta una avería: el engine responde KO y el monitor avisa a CENTRAL'];
     case 'FUERA_SERVICIO': return ['Out of Service', 'Bloqueada por CENTRAL: no acepta riegos'];
@@ -113,6 +114,7 @@ function pintar(d) {
   fijarHtml($('#monitor'), `<span class="punto ${d.con_monitor ? 'ok' : 'mal'}"></span>${d.con_monitor ? 'conectado' : 'sin conexión'}`);
   $('#monitor').title = d.monitor;
   fijarHtml($('#kafka'), `<span class="punto ${d.kafka ? 'ok' : ''}"></span>${d.kafka ? 'conectado' : 'conectando'}`);
+  fijarHtml($('#central'), d.central ? '<span class="punto ok"></span>conectada' : '<span class="punto mal"></span>Imposible conectar');
   fijarHtml($('#bloqueo'), d.bloqueada ? '<span class="punto medio"></span>Out of Service' : '<span class="punto ok"></span>activa');
 
   const [titulo, texto] = textoEstado(d);
@@ -134,7 +136,7 @@ function pintar(d) {
   $('#b-fuga').textContent = d.averia ? 'Resolver avería' : 'Simular fuga';
   $('#b-fuga').className = d.averia ? 'boton' : 'boton peligro';
   $('#b-fuga').disabled = !d.ws_id;
-  $('#b-regar').disabled = !d.ws_id || !d.kafka;
+  $('#b-regar').disabled = !d.ws_id || !d.kafka || !d.central || !d.con_monitor;
   pintarEventos($('#eventos'), d.eventos);
 }
 

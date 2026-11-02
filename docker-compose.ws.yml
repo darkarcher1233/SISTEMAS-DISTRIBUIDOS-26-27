@@ -32,6 +32,8 @@ services:
     container_name: ws1_e
     ports: ["8200:8200"]   # pantalla web
     command: ["python", "-m", "WM_WS.WM_WS_E", "${KAFKA_BROKER:?Falta KAFKA_BROKER en el .env}", "ws1_m:6000"]
+    volumes:
+      - ws1_datos:/app/datos   # riego en curso: si el Engine cae, al volver envía lo regado
     depends_on:
       - ws1_m
     restart: on-failure
@@ -52,8 +54,14 @@ services:
     container_name: ws2_e
     ports: ["8201:8200"]   # pantalla web
     command: ["python", "-m", "WM_WS.WM_WS_E", "${KAFKA_BROKER:?Falta KAFKA_BROKER en el .env}", "ws2_m:6000"]
+    volumes:
+      - ws2_datos:/app/datos   # riego en curso: si el Engine cae, al volver envía lo regado
     depends_on:
       - ws2_m
     restart: on-failure
     stdin_open: true
     tty: true
+
+volumes:
+  ws1_datos:
+  ws2_datos:

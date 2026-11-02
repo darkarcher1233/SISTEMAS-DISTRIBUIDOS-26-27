@@ -9,6 +9,7 @@ QUÉ TIENE
         Deja el socket ABIERTO: si se cierra, Central marca la WS como DESCONECTADA.
   - mantener_conexion(...)  -> hilo: registra y, si se pierde la conexión con Central
         (Central parada, red caída), vuelve a registrarse cada REINTENTO segundos.
+  - _latido()             -> envía  VIVO#<ws_id>  cada 2 s (mensaje de vida)
   - notificar_fuga()      -> envía  FUGA#<ws_id>
   - notificar_resuelta()  -> envía  RESUELTA#<ws_id>
   - al_registrar: función opcional que se llama tras cada registro correcto
@@ -27,6 +28,7 @@ import threading
 from common.sockets_utils import enviar, recibir
 
 REINTENTO = 3   # segundos entre intentos de registro
+LATIDO = 2      # segundos entre mensajes de vida (VIVO#<id>); Central da la WS por perdida a los 6 s
 
 _lock = threading.Lock()
 _conexion_central = None
@@ -91,10 +93,27 @@ def _esperar_cierre(conexion):
     pass
 
 
+def _latido():
+  """Hilo: manda VIVO#<id> a Central cada LATIDO segundos mientras haya conexión.
+  La guía define Desconectada como "Central NO recibe ningún mensaje de vida desde Monitor":
+  sin esto, Central solo se enteraría si el socket se cierra (no si se corta la red)."""
+  global _conexion_central
+  while not _parar.wait(LATIDO):
+    with _lock:
+      if _conexion_central is None or _ws_id is None:
+        continue
+      try:
+        enviar(_conexion_central, f"VIVO#{_ws_id}")
+      except OSError:
+        _conexion_central.close()   # mantener_conexion lo detecta y se vuelve a registrar
+        _conexion_central = None
+
+
 def mantener_conexion(ip_central, puerto, ws_id, ubicacion):
   """Hilo: se autentica en Central y lo vuelve a intentar cada REINTENTO segundos si no puede
   o si se pierde la conexión. Cada aviso sale una sola vez (hasta que cambie el motivo)."""
   global _conexion_central
+  threading.Thread(target=_latido, daemon=True).start()
   ultimo_aviso = ""
   while not _parar.is_set():
     if not registrar(ip_central, puerto, ws_id, ubicacion, silencioso=True):

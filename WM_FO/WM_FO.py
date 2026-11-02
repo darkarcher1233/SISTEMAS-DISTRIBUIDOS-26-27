@@ -41,13 +41,17 @@ PAUSA_ENTRE_PETICIONES = 4   # segundos entre una petición del fichero y la sig
 MARGEN_ESPERA = 30           # segundos extra (sobre la duración) antes de dar por perdida una petición
 SIN_RESPUESTA = 10           # segundos sin AUTORIZADO/DENEGADO -> se marca "sin respuesta"
 REINTENTO_KAFKA = 3
-ALARMAS = ("FUGA", "BLOQUEO")
+SIN_CENTRAL = 6              # s sin ESTADO_WS (Central lo publica cada 2 s) -> Central caída
+ALARMAS = ("FUGA", "BLOQUEO", "MONITOR", "AVERIA")
 MOTIVOS = {
     "TIEMPO": "Riego completado: se agotó el tiempo pedido",
     "MANUAL": "Parado a mano en la estación",
     "FUGA": "Interrumpido por una FUGA en la estación",
     "BLOQUEO": "Interrumpido: CENTRAL bloqueó la estación",
+    "MONITOR": "Interrumpido: la estación perdió su monitor (averiada)",
+    "AVERIA": "Interrumpido: el engine de la estación se cayó (volumen real recuperado al volver)",
 }
+NO_CENTRAL = "Imposible conectar con WM_Central"
 
 fo_id: str = ""
 broker: str = ""
@@ -84,6 +88,28 @@ def normalizar_estaciones(estaciones) -> list[dict]:
     if isinstance(estaciones, list):
         return [ws for ws in estaciones if isinstance(ws, dict)]
     return []
+
+
+def central_ok() -> bool:
+    """Central publica ESTADO_WS cada 2 s: si hace más de SIN_CENTRAL s que no llega, está caída."""
+    with estado_lock:
+        visto = instante_estado_ws
+    return visto is not None and time.time() - visto < SIN_CENTRAL
+
+
+def vigilar_central():
+    """Hilo: avisa (una vez) cuando Central deja de responder y cuando vuelve."""
+    time.sleep(SIN_CENTRAL + 4)   # margen al arrancar para recibir el primer ESTADO_WS
+    estaba_ok = None
+    while True:
+        ok = central_ok()
+        if ok != estaba_ok:
+            if ok and estaba_ok is not None:
+                mostrar(f"[{fo_id}] WM_Central vuelve a responder", "OK")
+            elif not ok:
+                alarma(f"{NO_CENTRAL}: no se pueden pedir riegos hasta que vuelva")
+            estaba_ok = ok
+        time.sleep(1)
 
 
 def terminar_peticion(ws_id):
@@ -151,8 +177,21 @@ def procesar_orden(datos):
                 s["telemetria"] = {"caudal": datos.get("caudal", 0), "volumen": datos.get("volumen", 0),
                                    "segundos": ahora - inicio, "duracion": s["duracion"]}
 
+    elif tipo == "AVISO":   # Central: la WS de mi riego se ha averiado o desconectado
+        alarma(f"{ws_id}: {datos.get('motivo', 'incidencia en la estación')}")
+        if s:
+            with estado_lock:
+                s["alerta"] = datos.get("motivo", "incidencia en la estación")
+
     elif tipo == "RESUMEN":
         motivo = datos.get("motivo", "?")
+        if not s:
+            # Resultado de un riego que pedí antes de cerrarse esta aplicación: Kafka me lo
+            # guarda (grupo fo_<id>) y me lo entrega al volver
+            mostrar(f"[{fo_id}] Resultado de un riego anterior en {ws_id}:", "AVISO")
+            with estado_lock:
+                s = {"req_id": "anterior", "ws_id": ws_id, "duracion": 0, "estado": "REGANDO", "creada": ahora}
+                solicitudes.insert(0, s)
         if motivo in ALARMAS:
             alarma(f"RIEGO EN {ws_id} INTERRUMPIDO POR {motivo}")
         mostrar(f"[{fo_id}] RESUMEN {ws_id}: volumen={datos.get('volumen', 0)} L "
@@ -163,7 +202,7 @@ def procesar_orden(datos):
             volumen = float(datos.get("volumen") or 0)
             with estado_lock:
                 s.update(estado="FINALIZADA", resumen={
-                    "volumen": volumen, "segundos": segundos, "duracion_pedida": s["duracion"],
+                    "volumen": volumen, "segundos": segundos, "duracion_pedida": s["duracion"] or "?",
                     "caudal_medio": volumen / (segundos / 60) if segundos else 0,
                     "motivo": MOTIVOS.get(motivo, f"Motivo: {motivo}"),
                 })
@@ -173,14 +212,18 @@ def procesar_orden(datos):
 
 
 def consumir_ordenes():
-    """Lee 'ordenes' sin grupo: cada FO recibe TODOS los mensajes nuevos y filtra los suyos.
-    Si Kafka cae, se reintenta cada pocos segundos."""
+    """Lee 'ordenes' y se queda con ESTADO_WS y con lo de su fo_id. Si Kafka cae, reintenta.
+
+    Grupo de Kafka propio por operario (fo_<id>) y commit DESPUÉS de procesar: Kafka recuerda
+    por dónde iba este operario. Si el FO se cierra durante un riego, al volver recibe lo que
+    se perdió (incluido el RESUMEN). Cada FO tiene su grupo, así que todos reciben todo.
+    La primera vez (grupo nuevo) empieza en "latest": no repite riegos de otros días."""
     while True:
         cons = None
         try:
-            # group_id=None: sin commits, cada arranque empieza en "latest" (no repite riegos viejos)
-            cons = consumidor(broker, TOPIC_ORDENES, group_id=None,
-                              auto_offset_reset="latest", enable_auto_commit=False)
+            cons = consumidor(broker, TOPIC_ORDENES, group_id=f"fo_{fo_id}",
+                              auto_offset_reset="latest", enable_auto_commit=False,
+                              session_timeout_ms=6000, heartbeat_interval_ms=2000)
             while True:
                 lotes = cons.poll(timeout_ms=500)
                 if not kafka_listo.is_set() and cons.assignment():
@@ -192,11 +235,13 @@ def consumir_ordenes():
                             procesar_orden(mensaje.value)
                         except Exception as exc:  # noqa: BLE001
                             mostrar(f"[{fo_id}] ERROR procesando orden: {exc}", "ALERTA")
+                if lotes:
+                    cons.commit()   # procesados: si el FO cae ahora, no se repiten ni se pierden
         except Exception as exc:  # noqa: BLE001
             if kafka_listo.is_set():
-                mostrar(f"[{fo_id}] ERROR Kafka 'ordenes' ({broker}): {exc}; reintentando", "ALERTA")
+                mostrar(f"[{fo_id}] ERROR Kafka ({broker}): {type(exc).__name__}; reintentando", "ALERTA")
             else:
-                print(f"[{fo_id}] Kafka no responde ({exc}); reintentando", flush=True)
+                print(f"[{fo_id}] Kafka no responde ({type(exc).__name__}); reintentando", flush=True)
             kafka_listo.clear()
         finally:
             if cons is not None:
@@ -241,13 +286,19 @@ def pedir_riego(prod, ws_id: str, duracion: int) -> threading.Event:
         solicitudes.insert(0, solicitud)
         del solicitudes[30:]
     evento.solicitud = solicitud   # para que el modo fichero sepa cómo acabó
+    if not central_ok():
+        with estado_lock:
+            solicitud.update(estado="NO_ENVIADA", motivo=NO_CENTRAL)
+        mostrar(f"[{fo_id}] {NO_CENTRAL}: la petición de {ws_id} no se envía", "ALERTA")
+        terminar_peticion(ws_id)
+        return evento
     try:
         prod.send(TOPIC_PETICIONES, {"tipo": "PETICION", "fo_id": fo_id,
                                      "ws_id": ws_id, "duracion": duracion}).get(timeout=5)
     except Exception as exc:  # noqa: BLE001
         with estado_lock:
-            solicitud.update(estado="SIN_RESPUESTA", alerta=f"No se pudo enviar: {exc}")
-        mostrar(f"[{fo_id}] No se pudo enviar la PETICION ({exc})", "ALERTA")
+            solicitud.update(estado="NO_ENVIADA", motivo=f"Kafka no responde ({type(exc).__name__})")
+        mostrar(f"[{fo_id}] No se pudo enviar la PETICION: Kafka no responde", "ALERTA")
         terminar_peticion(ws_id)
         return evento
     mostrar(f"[{fo_id}] PETICION enviada: {ws_id} durante {duracion} s")
@@ -343,6 +394,7 @@ def estado_web():
         if fichero_en_curso:
             fichero = {**fichero_en_curso, "resultados": list(fichero_en_curso["resultados"])}
     return {"ahora": ahora, "fo_id": fo_id, "broker": broker, "kafka": kafka_listo.is_set(),
+            "central": central_ok(),
             "instantanea": instante_estado_ws, "estaciones": estaciones, "solicitudes": lista,
             "fichero": fichero, "eventos": eventos.lista()}
 
@@ -355,6 +407,8 @@ def web_solicitar(cuerpo):
         duracion = 0
     if not ws_id or not 0 < duracion <= 3600:
         raise ValueError("Estación y duración (1-3600 s) obligatorias")
+    if not central_ok():
+        raise ValueError(NO_CENTRAL)
     with estado_lock:
         if _solicitud_abierta(ws_id, EN_CURSO):
             raise ValueError(f"Ya tienes una solicitud en curso en {ws_id}")
@@ -421,15 +475,22 @@ def main():
     iniciar_web("operario.html", estado_web, {"solicitar": web_solicitar, "fichero": web_fichero},
                 puerto_defecto=8300, nombre=f"Pantalla del operario {fo_id}")
     threading.Thread(target=consumir_ordenes, daemon=True).start()
+    threading.Thread(target=vigilar_central, daemon=True).start()
     print(f"[{fo_id}] conectando a Kafka {broker}...")
     if not kafka_listo.wait(20):
         print(f"[{fo_id}] AVISO: Kafka aún no responde; se sigue reintentando")
 
     try:
         menu(prod_fo())
+    except KeyboardInterrupt:
+        pass
     finally:
         if _prod is not None:
-            _prod.close()
+            try:
+                _prod.close()   # envía lo que quede pendiente
+            except Exception:  # noqa: BLE001 - al salir, sin trazas
+                pass
+        print(f"[{fo_id}] aplicación del operario cerrada")
 
 
 if __name__ == "__main__":

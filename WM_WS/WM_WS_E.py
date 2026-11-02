@@ -19,8 +19,17 @@ KAFKA (semana 2)
         ACTIVAR                         -> desbloquea la estación
   - Riego = hilo que cada 1 s calcula caudal aleatorio (15-25 L/min),
     acumula volumen y publica TELEMETRIA en el topic 'telemetria'.
-  - El riego termina por: tiempo agotado · tecla 's' · averia · orden BLOQUEAR
-        -> publica FIN (volumen, duracion, motivo)
+  - El riego termina por: tiempo agotado · tecla 's' · averia · orden BLOQUEAR · Monitor perdido
+        -> publica FIN (operario, volumen, duracion, motivo)
+
+RESILIENCIA
+  - Sin Monitor (socket cerrado o 3 s sin HC): corta el riego (FIN motivo MONITOR) y no admite
+    riegos, ni manuales: "WS AVERIADA". Se reconecta solo.
+  - El riego en curso se guarda cada segundo en DATOS_DIR/riego_<ws>.json. Si el Engine cae,
+    al volver envía el FIN con lo regado (motivo AVERIA). Un FIN que no se pudo enviar (Kafka
+    caído) se guarda como fin_pendiente_*.json y se reintenta.
+  - Central caída (sin ESTADO_WS en 6 s): "Imposible conectar con WM_Central"; el riego en
+    curso sigue hasta el final, pero no se pueden pedir riegos nuevos.
 
 MENÚ (teclado) y PANTALLA WEB (ui/estacion.html) hacen lo mismo:
         f = averia True   r = averia False
@@ -33,6 +42,9 @@ Mensajes: docs/PROTOCOLO.md
 
 from __future__ import annotations
 
+import glob
+import json
+import os
 import random
 import socket
 import sys
@@ -50,6 +62,11 @@ from common.kafka_utils import (
 from common.web import Registro, esperar_sin_teclado, iniciar_web
 
 REINTENTO = 3   # segundos entre reintentos (Monitor o Kafka caídos)
+SIN_HC = 3      # s sin health check del Monitor -> se da el Monitor por perdido
+SIN_CENTRAL = 6 # s sin ESTADO_WS de Central (lo publica cada 2 s) -> "Imposible conectar con WM_Central"
+# Carpeta donde se guarda el riego en curso (en Docker, un volumen): si el Engine cae a mitad
+# de un riego, al volver lee de aquí lo regado y envía el FIN con el volumen real
+DATOS_DIR = os.environ.get("DATOS_DIR", "datos")
 
 # ---------------------- Estado global protegido con Lock ----------------------
 estado_lock = threading.Lock()
@@ -64,6 +81,8 @@ motivo: str | None = None   # motivo con el que acabará el riego actual
 riego: dict | None = None   # datos del riego en curso para la pantalla
 con_monitor = False
 kafka_ok = False
+ultimo_estado_central = 0.0   # time.time() del último ESTADO_WS recibido de Central
+_fines_lock = threading.Lock()
 monitor_dir = ""
 eventos = Registro()
 _prod = None
@@ -72,6 +91,72 @@ _prod = None
 def log(texto, nivel="INFO"):
     print(f"[{ws_id or 'WS-?'}] {texto}", flush=True)
     eventos.add(texto, nivel)
+
+
+def central_ok() -> bool:
+    """Central publica ESTADO_WS cada 2 s: si hace más de SIN_CENTRAL s que no llega, está caída."""
+    return time.time() - ultimo_estado_central < SIN_CENTRAL
+
+
+def _ruta_riego():
+    return os.path.join(DATOS_DIR, f"riego_{ws_id}.json")
+
+
+def _escribir_json(ruta, datos):
+    """Escritura atómica: primero a un .tmp y luego se renombra (nunca queda un fichero a medias)."""
+    os.makedirs(DATOS_DIR, exist_ok=True)
+    tmp = ruta + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(datos, f)
+    os.replace(tmp, ruta)
+
+
+def _fin_pendiente(fin):
+    """Guarda un FIN que no se ha podido enviar; enviar_fines_pendientes() lo reintenta."""
+    _escribir_json(os.path.join(DATOS_DIR, f"fin_pendiente_{fin['ws_id']}_{int(time.time() * 1000)}.json"), fin)
+
+
+def recuperar_riego_interrumpido(broker):
+    """Al conectar con el Monitor: si hay un riego_<ws>.json es que el Engine se cayó regando.
+    Se convierte en un FIN (motivo AVERIA) con lo regado hasta entonces y se envía."""
+    ruta = _ruta_riego()
+    if os.path.exists(ruta):
+        try:
+            with open(ruta, encoding="utf-8") as f:
+                r = json.load(f)
+            _fin_pendiente({"tipo": "FIN", "ws_id": ws_id, "operario": r.get("operario"),
+                            "volumen": r.get("volumen", 0.0), "duracion": r.get("segundos", 0.0),
+                            "motivo": "AVERIA"})
+            log(f"Riego interrumpido recuperado del disco: {r.get('volumen', 0):.3f} L de "
+                f"{r.get('operario')}; se envía su FIN", "AVISO")
+        except (OSError, ValueError) as exc:
+            log(f"No se pudo leer {ruta}: {exc}", "ALERTA")
+        os.remove(ruta)
+    threading.Thread(target=enviar_fines_pendientes, args=(broker,), daemon=True).start()
+
+
+def enviar_fines_pendientes(broker):
+    """Envía los FIN guardados en disco (Kafka caído o Engine caído). Se reintenta hasta lograrlo."""
+    if not _fines_lock.acquire(blocking=False):
+        return   # ya hay un hilo haciéndolo
+    try:
+        while True:
+            pendientes = sorted(glob.glob(os.path.join(DATOS_DIR, f"fin_pendiente_{ws_id}_*.json")))
+            if not pendientes:
+                return
+            for ruta in pendientes:
+                try:
+                    with open(ruta, encoding="utf-8") as f:
+                        fin = json.load(f)
+                    productor_engine(broker).send(TOPIC_TELEMETRIA, fin).get(timeout=10)
+                    os.remove(ruta)
+                    log(f"FIN pendiente enviado (motivo={fin.get('motivo')}, {fin.get('volumen')} L)", "OK")
+                except Exception as exc:  # noqa: BLE001 - Kafka aún caído: se reintenta
+                    print(f"[{ws_id}] FIN pendiente sin enviar ({type(exc).__name__}); reintentando", flush=True)
+                    time.sleep(5)
+                    break
+    finally:
+        _fines_lock.release()
 
 
 def productor_engine(broker):
@@ -83,7 +168,10 @@ def productor_engine(broker):
 
 # ---------------------- Hilo 1: conexión con el Monitor -----------------------
 def responder_health_check(sock):
-    """Responde cada HC del Monitor con OK o KO según la variable averia."""
+    """Responde cada HC del Monitor con OK o KO según la variable averia.
+    El Monitor manda HC cada segundo: si en SIN_HC s no llega ninguno, recibir() lanza
+    TimeoutError y se da el Monitor por perdido (aunque el socket no se haya cerrado)."""
+    sock.settimeout(SIN_HC)
     while True:
         msg = common.sockets_utils.recibir(sock)
         if not msg:
@@ -102,9 +190,9 @@ def conexion_monitor(ip_monitor, puerto_monitor, broker):
         try:
             sock = socket.create_connection((ip_monitor, puerto_monitor), timeout=5)
             sock.settimeout(None)
-        except OSError as exc:
+        except OSError:
             if not aviso_dado:
-                log(f"Monitor {ip_monitor}:{puerto_monitor} no disponible ({exc}); reintentando", "AVISO")
+                log(f"Imposible conectar con el Monitor ({ip_monitor}:{puerto_monitor}); reintentando", "AVISO")
                 aviso_dado = True
             time.sleep(REINTENTO)
             continue
@@ -121,14 +209,20 @@ def conexion_monitor(ip_monitor, puerto_monitor, broker):
             log(f"conectado al monitor {ip_monitor}:{puerto_monitor}, broker Kafka={broker}", "OK")
             if primera_vez:
                 threading.Thread(target=consumir_ordenes, args=(broker,), daemon=True).start()
+                threading.Thread(target=vigilar_central, daemon=True).start()
+                recuperar_riego_interrumpido(broker)
             responder_health_check(sock)
         except (OSError, ValueError) as exc:
-            log(f"error con el monitor: {exc}", "AVISO")
+            if con_monitor:
+                log(f"conexión con el monitor perdida ({type(exc).__name__})", "AVISO")
         finally:
             sock.close()
         if con_monitor:
-            log("Monitor desconectado; reintentando", "AVISO")
-        con_monitor = False
+            # Sin Monitor nadie vigila la estación: se corta el riego y no se admiten más
+            con_monitor = False
+            if parar_riego("MONITOR"):
+                log("Monitor perdido durante un riego: el riego termina", "ALERTA")
+            log("WS AVERIADA: sin monitor no se admiten riegos (ni manuales). Reintentando", "ALERTA")
         time.sleep(REINTENTO)
 
 
@@ -174,6 +268,11 @@ def regar(duracion: int, operario: str, broker: str):
             log(f"no se pudo enviar TELEMETRIA: {exc}", "AVISO")
         with estado_lock:
             riego.update(caudal=caudal, volumen=volumen, segundos=transcurrido)
+        try:   # lo regado hasta ahora, en disco: si el Engine cae, no se pierde
+            _escribir_json(_ruta_riego(), {"ws_id": ws_id, "operario": operario, "duracion": duracion,
+                                           "volumen": round(volumen, 3), "segundos": round(transcurrido, 1)})
+        except OSError as exc:
+            log(f"no se pudo guardar el riego en disco: {exc}", "AVISO")
         print(f"[{ws_id}] caudal={caudal:.2f} L/min volumen={volumen:.3f} L", flush=True)
 
         # Espera interrumpible: si alguien hace stop_event.set() salimos al momento
@@ -183,16 +282,22 @@ def regar(duracion: int, operario: str, broker: str):
     fin = {
         "tipo": "FIN",
         "ws_id": ws_id,
+        "operario": operario,   # Central lo usa para el RESUMEN aunque se haya reiniciado
         "volumen": round(volumen, 3),
         "duracion": duracion_real,
         "motivo": motivo_actual,
     }
     try:
-        prod.send(TOPIC_TELEMETRIA, fin)
-        prod.flush(timeout=10)
-    except Exception as exc:  # noqa: BLE001
-        log(f"no se pudo enviar FIN: {exc}", "ALERTA")
-    nivel = "ALERTA" if motivo_actual in ("FUGA", "BLOQUEO") else "OK"
+        prod.send(TOPIC_TELEMETRIA, fin).get(timeout=10)   # .get(): esperar la confirmación
+    except Exception as exc:  # noqa: BLE001 - Kafka caído: se guarda y se reintenta después
+        log(f"no se pudo enviar el FIN ({type(exc).__name__}); se guarda y se reintenta", "ALERTA")
+        _fin_pendiente(fin)
+        threading.Thread(target=enviar_fines_pendientes, args=(broker,), daemon=True).start()
+    try:
+        os.remove(_ruta_riego())   # el riego ya no está "en curso"
+    except OSError:
+        pass
+    nivel = "ALERTA" if motivo_actual in ("FUGA", "BLOQUEO", "MONITOR") else "OK"
     log(f"FIN motivo={motivo_actual} volumen={volumen:.3f} L duracion={duracion_real}s", nivel)
 
     with estado_lock:
@@ -206,6 +311,9 @@ def iniciar_riego(duracion: int, operario: str, broker: str) -> bool:
     """Lanza el hilo de riego si la estación está libre y no bloqueada."""
     global regando
     with estado_lock:
+        if not con_monitor:
+            log("orden de riego ignorada: WS averiada (sin monitor)", "AVISO")
+            return False
         if bloqueada:
             log("orden de riego ignorada: estacion bloqueada", "AVISO")
             return False
@@ -226,6 +334,10 @@ def pedir_riego_a_central(broker: str, fo_id: str, duracion: int):
     está disponible y contesta AUTORIZADO (+ REGAR) o DENEGADO. Lanza ValueError si no se puede."""
     if not ws_id:
         raise ValueError("La estación aún no tiene Id (falta el monitor)")
+    if not con_monitor:
+        raise ValueError("WS averiada: sin monitor no se admiten riegos")
+    if not central_ok():
+        raise ValueError("Imposible conectar con WM_Central")
     if not fo_id or not 0 < duracion <= 3600:
         raise ValueError("Operario y duración (1-3600 s) obligatorios")
     try:
@@ -259,7 +371,10 @@ def poner_averia(valor: bool):
 
 # ---------------------- Hilo 3: consumidor de 'ordenes' -----------------------
 def procesar_orden(datos, broker):
-    global bloqueada
+    global bloqueada, ultimo_estado_central
+    if isinstance(datos, dict) and datos.get("tipo") == "ESTADO_WS":
+        ultimo_estado_central = time.time()   # Central está viva
+        return
     if not isinstance(datos, dict) or datos.get("ws_id") != ws_id:
         return
     tipo = datos.get("tipo")
@@ -331,6 +446,23 @@ def consumir_ordenes(broker: str):
         time.sleep(REINTENTO)
 
 
+def vigilar_central():
+    """Hilo: avisa (una vez) cuando Central deja de responder y cuando vuelve. Con Central caída
+    el riego en curso sigue hasta terminar, pero no se pueden pedir riegos nuevos."""
+    time.sleep(SIN_CENTRAL + 2)   # margen al arrancar para recibir el primer ESTADO_WS
+    estaba_ok = True
+    while True:
+        ok = central_ok()
+        if ok != estaba_ok:
+            if ok:
+                log("WM_Central vuelve a responder", "OK")
+            else:
+                log("Imposible conectar con WM_Central: el riego en curso termina y no se aceptan "
+                    "riegos nuevos hasta que vuelva", "ALERTA")
+            estaba_ok = ok
+        time.sleep(1)
+
+
 # ---------------------- Pantalla web -----------------------------------------
 def estado_web():
     with estado_lock:
@@ -345,7 +477,7 @@ def estado_web():
         r = dict(riego) if riego else None
         return {
             "ws_id": ws_id, "ubicacion": ubicacion, "monitor": monitor_dir, "con_monitor": con_monitor,
-            "kafka": kafka_ok, "bloqueada": bloqueada, "averia": averia, "estado": estado,
+            "kafka": kafka_ok, "central": central_ok(), "bloqueada": bloqueada, "averia": averia, "estado": estado,
             "riego": r, "eventos": eventos.lista(),
         }
 
@@ -438,4 +570,8 @@ if __name__ == "__main__":
         target=conexion_monitor, args=(ip_monitor, puerto_monitor, broker), daemon=True
     ).start()
 
-    menu(broker)
+    try:
+        menu(broker)
+    except KeyboardInterrupt:
+        pass
+    print(f"[{ws_id or 'Engine'}] Engine detenido")

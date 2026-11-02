@@ -63,6 +63,7 @@ h2.seccion span { color: var(--tenue); font-weight: 400; margin-left: 8px; }
     <p id="subtitulo">Aplicación del operario de campo</p>
   </div>
   <dl class="sistema">
+    <div><dt>WM_Central</dt><dd id="central">–</dd></div>
     <div><dt>Kafka</dt><dd id="kafka">–</dd></div>
     <div><dt>Estado de la red</dt><dd id="red">–</dd></div>
   </dl>
@@ -111,9 +112,9 @@ h2.seccion span { color: var(--tenue); font-weight: 400; margin-left: 8px; }
 const ESTADO_SOLICITUD = {
   ENVIADA: ['Enviada', 'neutra'], AUTORIZADA: ['Autorizada', 'estado-disponible'],
   REGANDO: ['Regando', 'estado-regando'], DENEGADA: ['Denegada', 'estado-fuga'], FINALIZADA: ['Finalizada', 'neutra'],
-  SIN_RESPUESTA: ['Sin respuesta de CENTRAL', 'estado-fuera'],
+  SIN_RESPUESTA: ['Sin respuesta de CENTRAL', 'estado-fuera'], NO_ENVIADA: ['No enviada', 'estado-fuga'],
 };
-const RESULTADO = {FINALIZADA: 'finalizada', DENEGADA: 'denegada', SIN_RESPUESTA: 'sin respuesta'};
+const RESULTADO = {FINALIZADA: 'finalizada', DENEGADA: 'denegada', SIN_RESPUESTA: 'sin respuesta', NO_ENVIADA: 'no enviada (WM_Central caída)'};
 let firmaMuro = '';
 
 function textoTile(e) {
@@ -165,7 +166,7 @@ function cuerpoSolicitud(s) {
       <div><dt>Tiempo</dt><dd>${num(r.segundos)} de ${r.duracion_pedida} s</dd></div>
       <div><dt>Caudal medio</dt><dd>${num(r.caudal_medio, 2)} L/min</dd></div></dl>
       <p class="${s.alerta ? 'alerta' : 'motivo'}">${esc(r.motivo)}</p>`;
-  } else if (s.estado === 'DENEGADA') {
+  } else if (s.estado === 'DENEGADA' || s.estado === 'NO_ENVIADA') {
     html += `<p class="motivo">${esc(s.motivo)}</p>`;
   } else if (s.estado === 'SIN_RESPUESTA') {
     html += '<p class="motivo">CENTRAL no ha contestado en 10 s. Comprueba que está en marcha.</p>';
@@ -194,7 +195,8 @@ function pintar(d) {
   fijarHtml($('#progreso-fichero'), !f ? '' : `<p style="margin:12px 0 0"><b>${esc(f.nombre)}</b>: ${f.activo ? `servicio ${f.actual} de ${f.total}` : `completado (${f.total} solicitudes)`}</p>
     <ul class="resultados">${f.resultados.map((r, i) => `<li><span>${i + 1}. ${esc(r.ws_id)}, ${r.duracion} s</span><span>${RESULTADO[r.resultado] || esc(r.resultado)}</span></li>`).join('')}</ul>`);
   $('#b-fichero').disabled = !!(f && f.activo);
-  $('#b-regar').disabled = !d.kafka;
+  fijarHtml($('#central'), d.central ? '<span class="punto ok"></span>conectada' : '<span class="punto mal"></span>Imposible conectar');
+  $('#b-regar').disabled = !d.kafka || !d.central;
   pintarEventos($('#eventos'), d.eventos);
 }
 
