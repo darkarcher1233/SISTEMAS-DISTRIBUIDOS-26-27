@@ -10,7 +10,7 @@ Grupo: Vlad + Abde · Tareas y fechas: tablero de Trello **SD**.
 central/                    CORE SYSTEM (en Railway)
   WM_Central.py             Central: sockets, estados, flujo de riego, menú      (Abde)
   db.py                     Acceso a SQLite                                      (Abde)
-  panel.py · panel.html     Panel web de monitorización (http://...:8080)        (Vlad)
+  panel.py                  Panel web de Central (http://...:8080)               (Vlad)
 ws/                         WATERING STATION (laboratorio, PC 2)
   WM_WS_M.py                Monitor: programa principal                          (Abde)
   monitor_central.py        Monitor ⇄ Central (sockets)                          (Abde)
@@ -19,9 +19,12 @@ ws/                         WATERING STATION (laboratorio, PC 2)
 fo/                         FIELD OPERATOR (laboratorio, PC 1)
   WM_FO.py                  Aplicación del operario                              (Vlad)
   peticiones/               Ficheros de peticiones para las pruebas
+ui/                         Páginas web de todos los módulos (HTML + comun.css/js)
+lanzador.py                 Lanzador web: arranca y vigila los módulos de un PC
 common/                     Código compartido
   sockets_utils.py          enviar / recibir por sockets                         (Vlad)
   kafka_utils.py            productor / consumidor de Kafka + nombres de topics  (Vlad)
+  web.py                    mini servidor web común de las pantallas
 docs/
   PROTOCOLO.md              Mensajes de sockets y Kafka  <- LEER PRIMERO
   capturas/                 Capturas para la memoria
@@ -45,31 +48,45 @@ python -m fo.WM_FO <ip_broker:puerto> <id_operario>
 
 Se usa `python -m ...` desde la raíz para que los imports de `common/` funcionen.
 
-## Panel de Central
+## Interfaz web (todas las pantallas)
 
-WM_Central arranca sola un panel web (solo librería estándar: `http.server` + un HTML con algo de
-JS). No hace falta instalar nada ni cambiar la orden de arranque.
+Cada módulo levanta su propia página web (solo librería estándar: `common/web.py` + `ui/*.html`).
+Los menús de teclado siguen funcionando igual; sin teclado (lanzador, Docker sin `-it`) se usa la web.
 
-- Abrir **http://localhost:8080** en el PC de Central, o **http://<IP_Central>:8080** desde otro PC.
-- Otro puerto: variable de entorno `PANEL_PORT` (p. ej. `PANEL_PORT=9000`; en PowerShell
-  `$env:PANEL_PORT=9000`) antes de arrancar Central.
-- La página pide `/estado` (JSON) cada segundo y se repinta sola. El punto de arriba a la derecha
-  está **verde «en línea»** si Central responde y **gris «sin conexión»** si no.
-- **AWS**: abrir el puerto TCP **8080** en el *Security Group* de la máquina de Central (igual que
-  el 5050 de los Monitor). Si Central corre en Docker: publicar el puerto (`-p 8080:8080` o
-  `ports: ["8080:8080"]` en su servicio).
-- Probar el panel sin Central ni Kafka: `python -m tests.panel_demo` (5 WS falsas, una por estado).
+| Módulo | Página | Puerto por defecto | Qué se hace desde ahí |
+|---|---|---|---|
+| WM_Central | `ui/panel.html` | **8080** (`PANEL_PORT`) | Ver todas las WS por parque, regar / bloquear / activar una o todas, alta de operarios |
+| WM_WS_M | `ui/monitor.html` | 8100, 8101… | Salud del Engine (HC) y conexión con Central |
+| WM_WS_E | `ui/estacion.html` | 8200, 8201… | Caudal y volumen en vivo, pedir riego a Central, parar, simular fuga |
+| WM_FO | `ui/operario.html` | 8300, 8301… | Ver WS, pedir riego, subir un fichero de peticiones, ver telemetría y resumen |
 
-| Color de la tarjeta | Estado | Qué significa |
+- Puerto concreto: variable de entorno `WEB_PORT`. Si no se da, cada proceso coge el primer puerto
+  libre desde el de la tabla (la URL sale por consola).
+- Probar el panel sin Central ni Kafka: `python -m tests.panel_demo`.
+- **AWS**: abrir en el *Security Group* el **8080** (panel) igual que el 5050 de los Monitor.
+
+| Color | Estado | Qué significa |
 |---|---|---|
 | Verde | `DISPONIBLE` | Conectada y lista para regar |
-| Verde **parpadeando** | `REGANDO` | Regando: muestra caudal (L/min), volumen (L) y operario |
-| Rojo | `FUGA` | El Monitor ha avisado de una fuga |
-| Naranja | `FUERA_SERVICIO` | Bloqueada desde Central («Fuera de servicio») |
+| Verde **parpadeando** | `REGANDO` | Regando: caudal (L/min), volumen (L), operario y tiempo |
+| Rojo | `FUGA` | El Monitor ha avisado de una fuga (el Engine responde KO o no responde) |
+| Naranja | `FUERA_SERVICIO` | Bloqueada desde Central |
 | Gris | `DESCONECTADA` | Se ha cerrado el socket de su Monitor (o aún no se ha conectado) |
 
-Debajo de las tarjetas: **Últimos eventos** (las 8 últimas líneas del log de Central, las más
-nuevas arriba) y la leyenda de colores.
+### Lanzador (todo un PC desde el navegador)
+
+```
+python lanzador.py          # y abrir http://localhost:8000
+```
+
+Arranca, para y reinicia como procesos hijos CENTRAL, cada WS (Monitor + Engine) y cada FO de este
+PC, y enseña la pantalla y la consola de cada uno. Se pueden añadir estaciones y operarios, parar
+solo el Engine o solo el Monitor de una WS (para probar las caídas), poner CENTRAL en modo
+**remota** (los Monitor se conectan a otra máquina) y arrancar el Kafka local con Docker si no
+responde. La lista y los ajustes se guardan en `lanzador.json` (no se sube).
+
+Puertos: CENTRAL 5050 (sockets) y 8080 (panel) · WS n: Engine↔Monitor 6000+n, webs 8100+n y
+8200+n · FO n: web 8300+n.
 
 ## Laboratorio con Docker
 
@@ -127,11 +144,11 @@ docker compose -f docker-compose.fo.yml down
 | Síntoma | Causa probable | Qué hacer |
 |---|---|---|
 | `ps` muestra `Restarting` en un Monitor | No llega a Central (no arrancada, IP/puerto mal en `CENTRAL`, firewall de Windows) | `logs ws1_m`; arrancar Central; revisar `CENTRAL` en `.env`; permitir Python en el firewall |
-| `ps` muestra `Restarting` en un Engine | Su Monitor aún no escucha (normal unos segundos) o el Monitor falla | Esperar; si sigue, mirar `logs` del Monitor |
+| El Engine dice «Monitor no disponible; reintentando» | Su Monitor aún no escucha (normal unos segundos) o el Monitor falla | Esperar; si sigue, mirar `logs` del Monitor |
 | El Monitor arranca pero la WS **no aparece en Central** | `CENTRAL` apunta a otro sitio (p. ej. `localhost`) | Usar `host.docker.internal:5050` o la IP real del PC de Central; luego `up -d` de nuevo |
 | El Engine no conecta a Kafka / no llegan órdenes | `KAFKA_BROKER` mal, o Kafka anuncia `localhost` | Revisar `.env`; el broker de AWS debe anunciar su IP pública |
 | `logs` vacíos | Imagen antigua sin `PYTHONUNBUFFERED=1`, o el programa espera en `input()` | `up -d --build`; hacer `attach` y pulsar Enter |
-| El Engine se reinició y el Monitor no lo vuelve a aceptar | El Monitor solo acepta un Engine por ejecución | `docker compose -f docker-compose.ws.yml restart ws1_m ws1_e` |
+| El Engine se reinició y la WS sigue en FUGA | El Monitor espera a que el Engine vuelva a conectarse (reintenta cada 3 s) y entonces avisa RESUELTA | Esperar unos segundos; si no, `logs` del Engine |
 | `fo1`/`fo2` en `Restarting` | El FO no llega a Kafka (`ERROR Kafka 'ordenes'` en `logs`) | Revisar `KAFKA_BROKER` en `.env` |
 | El FO envía la PETICION pero no recibe nada | Central aún no procesa `peticiones` o no está arrancada | Mirar la consola de Central; para probar solo el FO: `tests/central_falsa_fo.py` |
 

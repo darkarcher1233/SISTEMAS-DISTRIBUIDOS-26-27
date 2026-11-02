@@ -5,27 +5,41 @@ Semana 1 · Tarjeta Trello: "WM_WS_M, parte Central"
 
 USO
     python -m ws.WM_WS_M <puerto_para_engine> <ip_central:puerto> <id_ws> [ubicacion]
+    Pantalla web: la URL sale por consola (otro puerto: variable de entorno WEB_PORT)
 
-QUÉ TIENE QUE HACER (solo coordinar: la lógica está en los otros dos ficheros)
+QUÉ HACE (solo coordinar: la lógica está en los otros dos ficheros)
   1. Leer y validar los argumentos
-  2. monitor_central.registrar(...)                   -> se registra en Central (Abde)
-  3. monitor_engine.iniciar_servidor_engine(...)      -> en un hilo: espera al Engine y
-                                                          hace el health check (Vlad)
-  4. Mantenerse vivo mostrando el estado de la WS
+  2. monitor_engine.iniciar_servidor_engine(...)  -> en un hilo: espera al Engine y
+                                                     hace el health check (Vlad)
+  3. monitor_central.mantener_conexion(...)       -> en un hilo: se registra en Central y
+                                                     se vuelve a registrar si se cae (Abde)
+  4. Pantalla web (ui/monitor.html) y mantenerse vivo
 
 POR QUÉ ESTÁ DIVIDIDO: cada uno trabaja en su fichero y no hay conflictos en Git.
--------------------------------------------------------------------------------
-Debajo está la versión inicial de Abde. Ahora mismo es un cliente simple: hay que
-adaptarla a lo de arriba y mover la lógica de conexión a monitor_central.py.
 """
 
-#cliente
-
+import os
 import sys
 import threading
 import time
 
+from common.web import Registro, iniciar_web
 from ws import monitor_central, monitor_engine
+
+eventos = Registro()
+
+
+def avisar(texto):
+    print(f"[{time.strftime('%H:%M:%S')}] {texto}", flush=True)
+    if "KO" in texto or "FUGA" in texto:
+        nivel = "ALERTA"
+    elif "perdida" in texto or "No se pudo" in texto or "rechaz" in texto or "desconectado" in texto:
+        nivel = "AVISO"
+    elif "registrada" in texto or "OK" in texto or "RESUELTA" in texto or "conectado desde" in texto:
+        nivel = "OK"
+    else:
+        nivel = "INFO"
+    eventos.add(texto, nivel)
 
 
 def main():
@@ -45,18 +59,42 @@ def main():
 
     ws_id = sys.argv[3]
     ubicacion = sys.argv[4] if len(sys.argv) == 5 else ws_id
-    if not ws_id or not ubicacion:
-        print("El id de la WS y la ubicación no pueden estar vacíos.")
+    if not ws_id or not ubicacion or "#" in ws_id + ubicacion:
+        print("El id de la WS y la ubicación no pueden estar vacíos ni contener '#'.")
         sys.exit(1)
 
-    if not monitor_central.registrar(ip_central, puerto_central, ws_id, ubicacion):
-        print("No se pudo registrar la WS en Central.")
-        sys.exit(1)
+    monitor_central.avisar = avisar
+    # Tras (re)registrarse: si el Engine sigue averiado, Central tiene que volver a saberlo
+    monitor_central.al_registrar = lambda: None if monitor_engine.estado["salud_ok"] else monitor_central.notificar_fuga()
 
-    print(f"Monitor {ws_id} registrado en Central; esperando al Engine en el puerto {puerto_engine}.")
+    def estado_web():
+        return {
+            "ws_id": ws_id,
+            "ubicacion": ubicacion,
+            "puerto_engine": puerto_engine,
+            "central": f"{ip_central}:{puerto_central}",
+            "con_central": monitor_central.estado["conectada"],
+            "autenticado": monitor_central.estado["autenticado"],
+            "error_central": monitor_central.estado["ultimo_error"],
+            "engine": monitor_engine.estado["engine"],
+            "salud_ok": monitor_engine.estado["salud_ok"],
+            "motivo": monitor_engine.estado["motivo"],
+            "eventos": eventos.lista(),
+        }
+
+    iniciar_web("monitor.html", estado_web, puerto_defecto=8100, nombre=f"Pantalla del monitor {ws_id}")
+
+    def servidor_engine():
+        try:
+            monitor_engine.iniciar_servidor_engine(puerto_engine, ws_id, ubicacion)
+        except OSError as exc:   # p. ej. el puerto ya lo usa otro Monitor
+            avisar(f"No se puede escuchar al Engine en el puerto {puerto_engine}: {exc}")
+            os._exit(1)
+
+    threading.Thread(target=servidor_engine, daemon=True).start()
     threading.Thread(
-        target=monitor_engine.iniciar_servidor_engine,
-        args=(puerto_engine, ws_id),
+        target=monitor_central.mantener_conexion,
+        args=(ip_central, puerto_central, ws_id, ubicacion),
         daemon=True,
     ).start()
 

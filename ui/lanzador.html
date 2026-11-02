@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lanzador – WaterManagement</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;600;750&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/comun.css">
+<style>
+html, body { height: 100%; }
+body { display: grid; grid-template-columns: 290px minmax(0, 1fr); }
+@media (max-width: 860px) { body { grid-template-columns: 1fr; } .barra { max-height: none; border-right: 0; border-bottom: 1px solid var(--linea); } }
+
+/* ---------- barra lateral ---------- */
+.barra { background: var(--superficie); border-right: 1px solid var(--linea); overflow-y: auto; padding: 20px 16px 24px; display: flex; flex-direction: column; gap: 18px; }
+.barra .marca h1 { font-size: 1.45rem; }
+.kafka { border: 1px solid var(--linea); border-radius: var(--radio); padding: 10px 12px; }
+.kafka p { margin: 0; }
+.kafka .boton { margin-top: 8px; width: 100%; }
+.salida { margin: 8px 0 0; max-height: 140px; overflow: auto; font: .78rem/1.35 ui-monospace, "Cascadia Mono", Consolas, monospace; white-space: pre-wrap; color: var(--tenue); }
+.todo { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.todo .boton { padding: 8px 4px; min-width: 0; white-space: normal; font-size: .95rem; }
+nav h2 { font-size: .95rem; font-weight: 600; color: var(--tenue); margin: 14px 0 6px; }
+nav h2:first-child { margin-top: 0; }
+.item { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 10px; border-radius: var(--radio); color: inherit; text-decoration: none; }
+.item:hover { background: var(--papel); }
+.item[aria-current="page"] { background: var(--papel); box-shadow: inset 3px 0 0 var(--accion); }
+.item b { display: block; }
+.item small { display: block; color: var(--tenue); font-size: .85rem; }
+.item .estado { font-size: .85rem; color: var(--tenue); white-space: nowrap; }
+details.formulario summary { cursor: pointer; font-weight: 600; color: var(--accion); }
+details.formulario form { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+details.formulario .campo input { width: 100%; }
+.opciones { display: flex; gap: 14px; }
+.pie { font-size: .85rem; margin: auto 0 0; }
+
+/* ---------- vista del módulo ---------- */
+.vista { display: flex; flex-direction: column; min-height: 100vh; min-width: 0; }
+.vista-cabecera { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 24px; padding: 14px var(--margen); border-bottom: 1px solid var(--linea); background: var(--superficie); }
+.vista-cabecera h2 { font-size: 1.35rem; font-weight: 750; }
+.vista-cabecera p { margin: 2px 0 0; color: var(--tenue); }
+.banda { background: var(--fuera); color: var(--tinta); padding: 10px var(--margen); font-weight: 600; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.paneles { flex: 1; display: grid; gap: 14px; padding: 14px var(--margen) 18px; min-height: 560px; }
+.paneles.dos { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); }
+@media (max-width: 1100px) { .paneles.dos { grid-template-columns: 1fr; grid-auto-rows: minmax(560px, 1fr); } }
+.panel { display: flex; flex-direction: column; min-height: 0; border: 1px solid var(--linea); border-radius: var(--radio); background: var(--superficie); overflow: hidden; }
+.pie-panel { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 8px 12px; border-bottom: 1px solid var(--linea); font-size: .92rem; }
+.pie-panel a { margin-left: auto; color: var(--accion); }
+.mini { padding: 2px 10px; border: 1px solid var(--linea); border-radius: 4px; background: #fff; color: var(--accion); font-weight: 600; font-size: .85rem; cursor: pointer; }
+.panel iframe { flex: 1; width: 100%; border: 0; background: var(--papel); }
+.consola { flex: 1; margin: 0; padding: 12px 14px; overflow: auto; font: .82rem/1.45 ui-monospace, "Cascadia Mono", Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; background: #FBFCFB; }
+.parado { padding: 18px 16px 0; }
+.parado h3 { font-size: 1.1rem; margin-bottom: 4px; }
+.parado .acciones { margin: 12px 0 14px; }
+.parado + .consola { border-top: 1px solid var(--linea); }
+</style>
+</head>
+<body>
+<aside class="barra">
+  <div class="marca">
+    <h1>WaterManagement</h1>
+    <p>Lanzador de este PC</p>
+  </div>
+
+  <section class="kafka" id="kafka" aria-live="polite"></section>
+
+  <div class="todo">
+    <button class="boton" id="b-arrancar-todo">Arrancar todo</button>
+    <button class="boton secundario" id="b-parar-todo">Parar todo</button>
+  </div>
+
+  <nav id="nav" aria-label="Procesos"></nav>
+
+  <details class="formulario">
+    <summary>Añadir estación</summary>
+    <form id="form-estacion">
+      <label class="campo">Id<input id="ws-id" placeholder="WS3" required autocomplete="off"></label>
+      <label class="campo">Ubicación<input id="ws-ubicacion" placeholder="Plaza de los Luceros" required></label>
+      <button class="boton">Añadir y arrancar</button>
+    </form>
+  </details>
+
+  <details class="formulario">
+    <summary>Añadir operario</summary>
+    <form id="form-operario">
+      <label class="campo">Id (dado de alta en CENTRAL)<input id="fo-id" list="fo-conocidos" placeholder="FO3" required autocomplete="off"></label>
+      <datalist id="fo-conocidos"><option>FO1</option><option>FO2</option><option>FO3</option></datalist>
+      <button class="boton">Añadir y arrancar</button>
+    </form>
+  </details>
+
+  <details class="formulario">
+    <summary>Ajustes de conexión</summary>
+    <form id="form-ajustes">
+      <label class="campo">Kafka (IP:puerto)<input id="aj-broker" required></label>
+      <fieldset class="opciones" style="border:0;padding:0;margin:0">
+        <legend class="tenue" style="font-size:.85rem;padding:0 0 4px">CENTRAL</legend>
+        <label><input type="radio" name="modo" value="local"> En este PC</label>
+        <label><input type="radio" name="modo" value="remota"> Remota</label>
+      </fieldset>
+      <label class="campo">Sockets de CENTRAL remota<input id="aj-sockets" placeholder="IP_de_Central:5050"></label>
+      <label class="campo">Panel de CENTRAL remota<input id="aj-panel" placeholder="http://IP_de_Central:8080"></label>
+      <button class="boton">Guardar ajustes</button>
+      <p class="tenue" style="margin:0;font-size:.85rem">Se aplican a los procesos que arranques o reinicies después.</p>
+    </form>
+  </details>
+
+  <p class="tenue pie">Al cerrar el lanzador (Ctrl+C en su terminal) se paran todos los procesos.</p>
+</aside>
+
+<main class="vista">
+  <header class="vista-cabecera" id="cabecera"></header>
+  <div class="banda" id="banda-kafka" hidden></div>
+  <div class="paneles" id="paneles"></div>
+</main>
+
+<script src="/comun.js"></script>
+<script>
+let datos = null, verRegistro = false, ajustesCargados = false;
+const ESTADO_PROCESO = {en_marcha: ['ok', 'en marcha'], parado: ['', 'parado'], error: ['mal', 'terminó con error']};
+const CONSOLA = {engine: 'del engine', monitor: 'del monitor', operario: 'del operario', central: 'de CENTRAL'};
+
+function vistaActual() {
+  const h = decodeURIComponent(location.hash.slice(1)) || 'central';
+  const i = h.indexOf('/');
+  return i < 0 ? {clave: h, tipo: h, id: null} : {clave: h, tipo: h.slice(0, i), id: h.slice(i + 1)};
+}
+
+function resumenGrupo(procesos) {
+  const estados = procesos.filter(Boolean).map(p => p.estado);
+  if (estados.length && estados.every(e => e === 'en_marcha')) return ['ok', 'en marcha'];
+  if (estados.includes('error')) return ['mal', 'con error'];
+  if (estados.includes('en_marcha')) return ['medio', 'a medias'];
+  return ['', 'parado'];
+}
+
+function urlDe(p) { return `http://${location.hostname}:${p.web}/`; }
+
+/* Qué se ve en cada vista: grupo de procesos, título y paneles. */
+function modelo(d, v) {
+  if (v.tipo === 'ws') {
+    const e = d.estaciones.find(x => x.id === v.id);
+    return e && {grupo: `ws:${e.id}`, titulo: `Estación ${e.id}`, subtitulo: e.ubicacion, quitar: 'Quitar estación',
+      fuga: e.engine.estado === 'en_marcha' ? (e.averia ? 'resolver' : 'simular') : null,
+      procesos: [e.monitor, e.engine],
+      paneles: [{titulo: 'Pantalla de la estación', detalle: 'engine', proceso: e.engine},
+                {titulo: 'Monitor', detalle: 'monitor', proceso: e.monitor}]};
+  }
+  if (v.tipo === 'fo') {
+    const o = d.operarios.find(x => x.id === v.id);
+    return o && {grupo: `fo:${o.id}`, titulo: `Operario ${o.id}`, subtitulo: 'Aplicación del operario de campo',
+      quitar: 'Quitar operario', procesos: [o.proceso],
+      paneles: [{titulo: 'Aplicación del operario', detalle: 'operario', proceso: o.proceso}]};
+  }
+  const c = d.central;
+  if (c.modo === 'remota') {
+    return {grupo: null, titulo: 'CENTRAL remota', subtitulo: `Monitores contra ${c.sockets}`, procesos: [],
+      paneles: [{titulo: 'Panel de CENTRAL', detalle: 'remota', remota: c.panel}]};
+  }
+  return {grupo: 'central', titulo: 'CENTRAL', subtitulo: 'Sockets en el puerto 5050, panel en el 8080', procesos: [c.proceso],
+    paneles: [{titulo: 'Panel de CENTRAL', detalle: 'central', proceso: c.proceso}]};
+}
+
+function pintarBarra(d, v) {
+  const [kc, kt] = d.kafka ? ['ok', 'disponible'] : ['mal', 'no responde'];
+  fijarHtml($('#kafka'), `<p><b>Kafka</b> <span class="tenue">${esc(d.broker)}</span></p>
+    <p><span class="punto ${kc}"></span>${kt}</p>
+    ${d.kafka ? '' : `<button class="boton secundario" data-kafka ${d.docker.ocupado ? 'disabled' : ''}>${d.docker.ocupado ? 'Arrancando Kafka…' : 'Arrancar Kafka con Docker'}</button>`}
+    ${d.docker.salida.length ? `<pre class="salida">${esc(d.docker.salida.join('\n'))}</pre>` : ''}`);
+
+  const item = (href, titulo, sub, procesos) => {
+    const [clase, texto] = procesos ? resumenGrupo(procesos) : ['ok', 'remota'];
+    return `<a class="item" href="#${href}"${href === v.clave ? ' aria-current="page"' : ''}>
+      <span><b>${esc(titulo)}</b><small>${esc(sub)}</small></span><span class="estado"><span class="punto ${clase}"></span>${texto}</span></a>`;
+  };
+  const c = d.central;
+  fijarHtml($('#nav'), `<h2>CENTRAL</h2>` +
+    (c.modo === 'remota' ? item('central', 'CENTRAL remota', c.sockets, null) : item('central', 'CENTRAL', 'Panel y servidor de sockets', [c.proceso])) +
+    `<h2>Estaciones</h2>` + (d.estaciones.map(e => item(`ws/${e.id}`, e.id, e.ubicacion, [e.monitor, e.engine])).join('') || '<p class="tenue">Ninguna todavía.</p>') +
+    `<h2>Operarios</h2>` + (d.operarios.map(o => item(`fo/${o.id}`, o.id, 'Aplicación del operario', [o.proceso])).join('') || '<p class="tenue">Ninguno todavía.</p>'));
+
+  if (!ajustesCargados) {
+    ajustesCargados = true;
+    $('#aj-broker').value = d.ajustes.broker;
+    $('#aj-sockets').value = d.ajustes.sockets || '';
+    $('#aj-panel').value = d.ajustes.panel || '';
+    document.querySelector(`input[name=modo][value=${d.ajustes.modo}]`).checked = true;
+  }
+}
+
+function pintarCabecera(m) {
+  if (!m) { fijarHtml($('#cabecera'), '<div><h2>No encontrado</h2><p>Ese proceso ya no está en el lanzador.</p></div>'); return; }
+  const vivos = m.procesos.filter(p => p && p.estado === 'en_marcha').length;
+  let botones = '';
+  if (m.grupo) {
+    if (vivos < m.procesos.length) botones += `<button class="boton" data-grupo="arrancar">Arrancar</button>`;
+    if (vivos) botones += `<button class="boton secundario" data-grupo="reiniciar">Reiniciar</button><button class="boton secundario" data-grupo="parar">Parar</button>`;
+    if (m.fuga) botones += m.fuga === 'simular' ? '<button class="boton peligro" data-fuga>Simular fuga</button>'
+                                                : '<button class="boton" data-fuga>Resolver avería</button>';
+    botones += `<button class="boton secundario" data-registro>${verRegistro ? 'Ver pantalla' : 'Ver consola'}</button>`;
+    if (m.quitar) botones += `<button class="boton peligro" data-quitar>${m.quitar}</button>`;
+  }
+  fijarHtml($('#cabecera'), `<div><h2>${esc(m.titulo)}</h2><p>${esc(m.subtitulo)}</p></div><div class="acciones">${botones}</div>`);
+}
+
+function contenidoPanel(p, d) {
+  if (p.detalle === 'remota') {
+    return p.remota ? {clave: 'remota|' + p.remota, html: `<iframe src="${esc(p.remota)}" title="Panel de CENTRAL remota"></iframe>`}
+      : {clave: 'remota|', html: '<div class="parado"><h3>Falta la dirección del panel</h3><p class="tenue">Escríbela en Ajustes de conexión (el dominio público de CENTRAL en Railway).</p></div>'};
+  }
+  const proc = p.proceso;
+  if (!proc) return {clave: 'nada', html: '<div class="parado"><p class="tenue">Proceso no disponible.</p></div>'};
+  if (verRegistro) return {clave: `consola|${proc.clave}|${proc.estado}`, html: `<pre class="consola" data-consola="${esc(proc.clave)}"></pre>`};
+  const listo = proc.estado === 'en_marcha' && d.ahora - proc.inicio > 1.2;
+  if (listo) return {clave: `web|${proc.web}|${proc.inicio}`, html: `<iframe src="${urlDe(proc)}" title="${esc(p.titulo)}"></iframe>`};
+  const [, texto] = ESTADO_PROCESO[proc.estado];
+  const titulo = proc.estado === 'en_marcha' ? 'Arrancando…' : `${esc(proc.nombre)}: ${texto}`;
+  const pista = proc.estado === 'error' ? 'Mira las últimas líneas de su consola para ver el motivo.' : '';
+  return {clave: `parado|${proc.estado}|${proc.inicio}`, html: `<div class="parado"><h3>${titulo}</h3><p class="tenue">${pista}</p></div>
+    <pre class="consola" data-consola="${esc(proc.clave)}"></pre>`};
+}
+
+function pintarPaneles(m, d) {
+  const cont = $('#paneles');
+  const paneles = m ? m.paneles : [];
+  cont.className = 'paneles' + (paneles.length === 2 ? ' dos' : '');
+  while (cont.children.length > paneles.length) cont.lastChild.remove();
+  paneles.forEach((p, i) => {
+    let panel = cont.children[i];
+    if (!panel) { panel = document.createElement('section'); panel.className = 'panel'; cont.append(panel); }
+    const {clave, html} = contenidoPanel(p, d);
+    const url = p.remota || (p.proceso && p.proceso.web ? urlDe(p.proceso) : '');
+    const titulo = verRegistro && p.proceso ? `Consola ${CONSOLA[p.detalle] || ''}` : p.titulo;
+    // en las estaciones cada panel lleva su propio Parar/Arrancar: así se simula la caída de uno solo
+    const suelto = m.procesos.length > 1 && p.proceso;
+    const mando = suelto ? `<button class="mini" data-proceso="${esc(p.proceso.clave)}" data-accion="${p.proceso.estado === 'en_marcha' ? 'parar' : 'arrancar'}">${p.proceso.estado === 'en_marcha' ? 'Parar' : 'Arrancar'}</button>` : '';
+    const pie = `<div class="pie-panel"><b>${esc(titulo)}</b>${p.proceso && p.proceso.web ? `<span class="tenue">puerto ${p.proceso.web}</span>` : ''}${mando}${url ? `<a href="${esc(url)}" target="_blank" rel="noopener">Abrir en otra pestaña</a>` : ''}</div>`;
+    if (panel.dataset.clave !== clave) { panel.dataset.clave = clave; panel.innerHTML = pie + html; }
+  });
+  cont.querySelectorAll('[data-consola]').forEach(cargarConsola);
+}
+
+async function cargarConsola(pre) {
+  try {
+    const r = await fetch(`/api/registro?clave=${encodeURIComponent(pre.dataset.consola)}`, {cache: 'no-store'});
+    const texto = (await r.json()).lineas.join('\n') || '(sin salida todavía)';
+    if (pre.textContent === texto) return;
+    const alFinal = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 40;
+    pre.textContent = texto;
+    if (alFinal) pre.scrollTop = pre.scrollHeight;
+  } catch (err) { /* el lanzador no responde: ya lo avisa la banda superior */ }
+}
+
+function pintar(d) {
+  if (!d) return;
+  datos = d;
+  const v = vistaActual();
+  const m = modelo(d, v);
+  pintarBarra(d, v);
+  pintarCabecera(m);
+  const banda = $('#banda-kafka');
+  banda.hidden = d.kafka;
+  fijarHtml(banda, `<span>Kafka no responde en ${esc(d.broker)}. Los módulos lo reintentan solos cada pocos segundos.</span>
+    ${d.docker.ocupado ? '' : '<button class="boton secundario" data-kafka>Arrancar Kafka con Docker</button>'}`);
+  pintarPaneles(m, d);
+}
+
+const refrescar = sondear('/api/estado', pintar, 'el lanzador');
+window.addEventListener('hashchange', () => { verRegistro = false; pintar(datos); });
+
+document.addEventListener('click', async ev => {
+  const b = ev.target.closest('button');
+  if (!b) return;
+  const m = datos && modelo(datos, vistaActual());
+  if (b.hasAttribute('data-kafka')) { await enviar('/api/kafka'); refrescar(); }
+  else if (b.dataset.grupo && m) { await enviar('/api/grupo', {grupo: m.grupo, accion: b.dataset.grupo}); refrescar(); }
+  else if (b.dataset.proceso) { await enviar('/api/grupo', {grupo: b.dataset.proceso, accion: b.dataset.accion}); refrescar(); }
+  else if (b.hasAttribute('data-fuga') && m) { await enviar('/api/fuga', {grupo: m.grupo}); refrescar(); }
+  else if (b.hasAttribute('data-registro')) { verRegistro = !verRegistro; pintar(datos); }
+  else if (b.hasAttribute('data-quitar') && m && confirm(`¿${m.quitar} ${m.titulo.split(' ').pop()}? Se parará y dejará de aparecer aquí.`)) {
+    const r = await enviar('/api/quitar', {grupo: m.grupo});
+    if (r.ok) location.hash = 'central';
+    refrescar();
+  }
+});
+$('#b-arrancar-todo').addEventListener('click', async () => { await enviar('/api/todo', {accion: 'arrancar'}); refrescar(); });
+$('#b-parar-todo').addEventListener('click', async () => {
+  if (confirm('¿Parar todos los procesos?')) { await enviar('/api/todo', {accion: 'parar'}); refrescar(); }
+});
+$('#form-estacion').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const r = await enviar('/api/estacion', {id: $('#ws-id').value.trim(), ubicacion: $('#ws-ubicacion').value.trim()});
+  if (r.ok) { ev.target.reset(); location.hash = r.vista; }
+  refrescar();
+});
+$('#form-operario').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const r = await enviar('/api/operario', {id: $('#fo-id').value.trim()});
+  if (r.ok) { ev.target.reset(); location.hash = r.vista; }
+  refrescar();
+});
+$('#form-ajustes').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  await enviar('/api/ajustes', {broker: $('#aj-broker').value.trim(), modo: document.querySelector('input[name=modo]:checked').value,
+                                sockets: $('#aj-sockets').value.trim(), panel: $('#aj-panel').value.trim()});
+  refrescar();
+});
+</script>
+</body>
+</html>

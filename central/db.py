@@ -140,3 +140,30 @@ def guardar_riego(ws_id, operario_id, inicio, fin, volumen_total):
         finally:
             conn.close()
 
+
+
+def get_operarios():
+    """Devuelve [(id, nombre)] de los operarios dados de alta."""
+    _ensure_tables()
+    with DB_LOCK:
+        conn = _connect()
+        try:
+            filas = conn.execute("SELECT id, nombre FROM operarios ORDER BY id").fetchall()
+            return [(fila["id"], fila["nombre"]) for fila in filas]
+        finally:
+            conn.close()
+
+
+def guardar_operario(id_operario, nombre):
+    """Da de alta (o renombra) un operario. El id se guarda en minúsculas, como los de prueba."""
+    _ensure_tables()
+    with DB_LOCK:
+        conn = _connect()
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO operarios(id, nombre) VALUES (?, ?)",
+                (id_operario.lower(), nombre),
+            )
+            conn.commit()
+        finally:
+            conn.close()

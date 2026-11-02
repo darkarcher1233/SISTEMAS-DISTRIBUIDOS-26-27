@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Operario – WaterManagement</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;600;750&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/comun.css">
+<style>
+/* estaciones y formularios arriba; si no caben lado a lado, los formularios justo debajo */
+.rejilla {
+  display: grid; grid-template-columns: minmax(0, 1fr) 330px; grid-template-rows: auto auto 1fr;
+  grid-template-areas: "estaciones lateral" "solicitudes lateral" "notificaciones lateral";
+  gap: 24px; padding: 24px var(--margen) 40px; align-items: start;
+}
+.zona-estaciones { grid-area: estaciones; min-width: 0; }
+.zona-solicitudes { grid-area: solicitudes; min-width: 0; }
+.zona-notificaciones { grid-area: notificaciones; min-width: 0; }
+.lateral { grid-area: lateral; display: flex; flex-direction: column; gap: 18px; }
+@media (max-width: 860px) {
+  .rejilla { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-template-areas: "estaciones" "lateral" "solicitudes" "notificaciones"; gap: 20px; }
+  .lateral { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+}
+h2.seccion { font-size: 1.05rem; font-weight: 600; margin-bottom: 10px; }
+h2.seccion span { color: var(--tenue); font-weight: 400; margin-left: 8px; }
+
+.muro { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.ws { display: flex; flex-direction: column; gap: 1px; min-height: 92px; padding: 10px 12px; border: 0; border-radius: var(--radio); text-align: left; cursor: pointer; }
+.ws .id { font-size: 1.2rem; font-weight: 750; }
+.ws .est { font-weight: 600; font-size: .92rem; }
+.ws .donde { margin-top: auto; font-size: .85rem; }
+.vacio { padding: 22px; border: 1px dashed var(--linea); border-radius: var(--radio); color: var(--tenue); }
+
+.solicitudes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.solicitud { background: var(--superficie); border: 1px solid var(--linea); border-left-width: 5px; border-radius: var(--radio); padding: 12px 16px; }
+.solicitud.REGANDO, .solicitud.AUTORIZADA { border-left-color: var(--disponible); }
+.solicitud.DENEGADA { border-left-color: var(--fuga); }
+.solicitud.SIN_RESPUESTA { border-left-color: var(--fuera); }
+.solicitud header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
+.solicitud header b { font-size: 1.15rem; }
+.solicitud header .tenue { margin-left: auto; font-size: .9rem; }
+.solicitud .cuerpo { margin-top: 8px; }
+.cifras { display: flex; flex-wrap: wrap; gap: 6px 26px; margin: 0; }
+.cifras dt { color: var(--tenue); font-size: .85rem; }
+.cifras dd { margin: 0; font-weight: 700; font-size: 1.15rem; }
+.solicitud .progreso { margin-top: 10px; }
+.motivo { margin: 6px 0 0; }
+.alerta { margin: 6px 0 0; color: var(--fuga); font-weight: 600; }
+
+.lateral .campo input { width: 100%; }
+.lateral .acciones .campo { flex: 1 1 7rem; }
+.fichero input[type=file] { width: 100%; margin: 4px 0 10px; }
+.resultados { list-style: none; margin: 10px 0 0; padding: 0; }
+.resultados li { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; border-top: 1px solid var(--linea); }
+</style>
+</head>
+<body>
+<header class="cabecera">
+  <div class="marca">
+    <h1 id="titulo">Operario</h1>
+    <p id="subtitulo">Aplicación del operario de campo</p>
+  </div>
+  <dl class="sistema">
+    <div><dt>Kafka</dt><dd id="kafka">–</dd></div>
+    <div><dt>Estado de la red</dt><dd id="red">–</dd></div>
+  </dl>
+</header>
+
+<main class="rejilla">
+    <section class="zona-estaciones" aria-labelledby="t-estaciones">
+      <h2 class="seccion" id="t-estaciones">Estaciones<span id="disponibles"></span></h2>
+      <div id="muro"></div>
+    </section>
+    <section class="zona-solicitudes" aria-labelledby="t-solicitudes">
+      <h2 class="seccion" id="t-solicitudes">Mis solicitudes</h2>
+      <ol class="solicitudes" id="solicitudes"></ol>
+    </section>
+    <section class="bloque registro zona-notificaciones" aria-labelledby="t-notif">
+      <h2 id="t-notif">Notificaciones</h2>
+      <ol id="eventos"></ol>
+    </section>
+
+  <aside class="lateral">
+    <section class="bloque" aria-labelledby="t-solicitar">
+      <h2 id="t-solicitar">Solicitar riego</h2>
+      <p class="tenue">Pulsa una estación para elegirla.</p>
+      <form class="acciones" id="form-regar">
+        <label class="campo">Estación<input id="ws" list="lista-ws" required autocomplete="off" placeholder="WS1"></label>
+        <label class="campo">Duración (s)<input id="dur" type="number" min="1" max="3600" value="60" required></label>
+        <button class="boton" id="b-regar">Solicitar riego</button>
+      </form>
+      <datalist id="lista-ws"></datalist>
+    </section>
+
+    <section class="bloque fichero" aria-labelledby="t-fichero">
+      <h2 id="t-fichero">Solicitudes desde fichero</h2>
+      <p class="tenue">Una por línea: <b>WS1;30</b> (estación y segundos). Se espera a que acabe cada una y 4 s antes de la siguiente.</p>
+      <form id="form-fichero">
+        <input type="file" id="fichero" accept=".txt,text/plain" required aria-label="Fichero de solicitudes">
+        <button class="boton secundario" id="b-fichero">Ejecutar fichero</button>
+      </form>
+      <div id="progreso-fichero"></div>
+    </section>
+  </aside>
+</main>
+
+<script src="/comun.js"></script>
+<script>
+const ESTADO_SOLICITUD = {
+  ENVIADA: ['Enviada', 'neutra'], AUTORIZADA: ['Autorizada', 'estado-disponible'],
+  REGANDO: ['Regando', 'estado-regando'], DENEGADA: ['Denegada', 'estado-fuga'], FINALIZADA: ['Finalizada', 'neutra'],
+  SIN_RESPUESTA: ['Sin respuesta de CENTRAL', 'estado-fuera'],
+};
+const RESULTADO = {FINALIZADA: 'finalizada', DENEGADA: 'denegada', SIN_RESPUESTA: 'sin respuesta'};
+let firmaMuro = '';
+
+function textoTile(e) {
+  if (e.estado === 'REGANDO') return `${num(e.caudal)} L/min, ${esc(e.operario)}`;
+  if (e.estado === 'FUGA') return esc(e.motivo_fuga || 'Fuga');
+  return esc(e.ubicacion);
+}
+
+function pintarMuro(d) {
+  const muro = $('#muro');
+  if (!d.estaciones.length) {
+    fijarHtml(muro, `<p class="vacio">${d.instantanea ? 'CENTRAL no tiene estaciones registradas.' : 'Esperando el estado de la red desde CENTRAL.'}</p>`);
+    firmaMuro = ''; return;
+  }
+  const firma = d.estaciones.map(e => e.id).join(',');
+  if (firma !== firmaMuro) {
+    firmaMuro = firma;
+    fijarHtml(muro, `<div class="muro">${d.estaciones.map(e => `<button class="ws" type="button" data-id="${esc(e.id)}">
+      <span class="id">${esc(e.id)}</span><span class="est"></span><span class="donde"></span></button>`).join('')}</div>`);
+    muro.querySelectorAll('.ws').forEach(b => b.addEventListener('click', () => {
+      $('#ws').value = b.dataset.id; $('#dur').focus();
+    }));
+  }
+  for (const e of d.estaciones) {
+    const b = muro.querySelector(`[data-id="${CSS.escape(e.id)}"]`);
+    const clase = 'ws estado-' + CLASE[e.estado];
+    if (b.className !== clase) b.className = clase;
+    b.querySelector('.est').textContent = ETIQUETA[e.estado];
+    fijarHtml(b.querySelector('.donde'), textoTile(e));
+    b.setAttribute('aria-label', `${e.id}, ${ETIQUETA[e.estado]}`);
+  }
+  const libres = d.estaciones.filter(e => e.estado === 'DISPONIBLE').map(e => e.id);
+  $('#disponibles').textContent = libres.length === 1 ? '1 disponible para regar'
+    : libres.length ? `${libres.length} disponibles para regar` : 'ninguna disponible';
+  fijarHtml($('#lista-ws'), d.estaciones.map(e => `<option value="${esc(e.id)}">${ETIQUETA[e.estado]}</option>`).join(''));
+}
+
+function cuerpoSolicitud(s) {
+  let html = '';
+  if (s.estado === 'REGANDO' && s.telemetria) {
+    const t = s.telemetria;
+    html += `<dl class="cifras"><div><dt>Caudal</dt><dd>${num(t.caudal)} L/min</dd></div>
+      <div><dt>Suministrado</dt><dd>${num(t.volumen, 2)} L</dd></div>
+      <div><dt>Tiempo</dt><dd>${Math.floor(t.segundos)} de ${t.duracion} s</dd></div></dl>
+      <div class="progreso"><i style="width:${Math.min(100, 100 * t.segundos / (t.duracion || 1))}%"></i></div>`;
+  } else if (s.estado === 'FINALIZADA' && s.resumen) {
+    const r = s.resumen;
+    html += `<dl class="cifras"><div><dt>Agua suministrada</dt><dd>${num(r.volumen, 2)} L</dd></div>
+      <div><dt>Tiempo</dt><dd>${num(r.segundos)} de ${r.duracion_pedida} s</dd></div>
+      <div><dt>Caudal medio</dt><dd>${num(r.caudal_medio, 2)} L/min</dd></div></dl>
+      <p class="${s.alerta ? 'alerta' : 'motivo'}">${esc(r.motivo)}</p>`;
+  } else if (s.estado === 'DENEGADA') {
+    html += `<p class="motivo">${esc(s.motivo)}</p>`;
+  } else if (s.estado === 'SIN_RESPUESTA') {
+    html += '<p class="motivo">CENTRAL no ha contestado en 10 s. Comprueba que está en marcha.</p>';
+  }
+  if (s.alerta && s.estado !== 'FINALIZADA') html += `<p class="alerta">${esc(s.alerta)}</p>`;
+  return html ? `<div class="cuerpo">${html}</div>` : '';
+}
+
+function pintar(d) {
+  document.title = `${d.fo_id} – WaterManagement`;
+  $('#titulo').textContent = `Operario ${d.fo_id}`;
+  fijarHtml($('#kafka'), `<span class="punto ${d.kafka ? 'ok' : ''}"></span>${d.kafka ? 'conectado' : 'conectando'}`);
+  $('#kafka').title = d.broker;
+  const edad = d.instantanea ? d.ahora - d.instantanea : null;
+  fijarHtml($('#red'), edad === null ? '<span class="punto"></span>sin datos'
+    : edad > 5 ? `<span class="punto medio"></span>${hace(d.instantanea, d.ahora)}` : '<span class="punto ok"></span>al día');
+
+  pintarMuro(d);
+  fijarHtml($('#solicitudes'), d.solicitudes.map(s => {
+    const [texto, clase] = ESTADO_SOLICITUD[s.estado] || [s.estado, 'neutra'];
+    return `<li class="solicitud ${s.estado}"><header><b>${esc(s.ws_id)}</b><span class="pastilla ${clase}">${texto}</span>
+      <span>${s.duracion} s</span><span class="tenue">${esc(s.req_id)}, ${hora(s.creada)}</span></header>${cuerpoSolicitud(s)}</li>`;
+  }).join('') || '<li class="vacio">Todavía no has pedido ningún riego.</li>');
+
+  const f = d.fichero;
+  fijarHtml($('#progreso-fichero'), !f ? '' : `<p style="margin:12px 0 0"><b>${esc(f.nombre)}</b>: ${f.activo ? `servicio ${f.actual} de ${f.total}` : `completado (${f.total} solicitudes)`}</p>
+    <ul class="resultados">${f.resultados.map((r, i) => `<li><span>${i + 1}. ${esc(r.ws_id)}, ${r.duracion} s</span><span>${RESULTADO[r.resultado] || esc(r.resultado)}</span></li>`).join('')}</ul>`);
+  $('#b-fichero').disabled = !!(f && f.activo);
+  $('#b-regar').disabled = !d.kafka;
+  pintarEventos($('#eventos'), d.eventos);
+}
+
+const refrescar = sondear('/api/estado', pintar, 'la aplicación del operario');
+$('#form-regar').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  await enviar('/api/solicitar', {ws: $('#ws').value.trim(), duracion: +$('#dur').value});
+  refrescar();
+});
+$('#form-fichero').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const archivo = $('#fichero').files[0];
+  if (!archivo) return;
+  const r = await enviar('/api/fichero', {nombre: archivo.name, contenido: await archivo.text()});
+  if (r.ok) ev.target.reset();
+  refrescar();
+});
+</script>
+</body>
+</html>
