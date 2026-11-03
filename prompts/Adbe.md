@@ -1,0 +1,252 @@
+#
+por qué no me deja clonar mi repositorio de github desde ubuntu? abuda@abuda-GIGABYTE-GAMING-A16-CVH:~/IC/P2$ sudo apt install git
+[sudo: authenticate] Contraseña:          
+El paquete indicado a continuación se instaló de forma automática y ya no es necesario:
+  nvidia-firmware-595-595.71.05
+Utilice «sudo apt autoremove» para eliminarlo.
+
+Instalando:
+  git
+
+Instalando dependencias:
+  git-man  liberror-perl
+
+Paquetes sugeridos:
+  git-doc  git-email  git-gui  gitk  gitweb  git-cvs  git-svn
+
+Resumen:
+  Actualizando: 0, Instalando 3, Eliminando: 0, no actualizando: 44
+  Tamaño de la descarga: 5.453 kB
+  Espacio necesario: 28,4 MB / 2.304 MB disponible
+
+¿Continuar? [S/n] S
+Des:1 http://es.archive.ubuntu.com/ubuntu resolute/main amd64 liberror-perl all 0.17030-1 [23,5 kB]
+Des:2 http://es.archive.ubuntu.com/ubuntu resolute/main amd64 git-man all 1:2.53.0-1ubuntu1 [1.202 kB]
+Des:3 http://es.archive.ubuntu.com/ubuntu resolute/main amd64 git amd64 1:2.53.0-1ubuntu1 [4.227 kB]
+Descargados 5.453 kB en 10s (535 kB/s)                                        
+Seleccionando el paquete liberror-perl previamente no seleccionado.
+(Leyendo la base de datos ... 203205 ficheros o directorios instalados actualme
+nte.)
+Preparando para desempaquetar .../liberror-perl_0.17030-1_all.deb ...
+Desempaquetando liberror-perl (0.17030-1) ...
+Seleccionando el paquete git-man previamente no seleccionado.
+Preparando para desempaquetar .../git-man_1%3a2.53.0-1ubuntu1_all.deb ...
+Desempaquetando git-man (1:2.53.0-1ubuntu1) ...
+Seleccionando el paquete git previamente no seleccionado.
+Preparando para desempaquetar .../git_1%3a2.53.0-1ubuntu1_amd64.deb ...
+Desempaquetando git (1:2.53.0-1ubuntu1) ...
+Configurando liberror-perl (0.17030-1) ...
+Configurando git-man (1:2.53.0-1ubuntu1) ...
+Configurando git (1:2.53.0-1ubuntu1) ...
+Procesando disparadores para man-db (2.13.1-1build1) ...
+abuda@abuda-GIGABYTE-GAMING-A16-CVH:~/IC/P2$ git clone https://github.com/Doronin-git/IC_Practica2_Pajaros
+Clonando en 'IC_Practica2_Pajaros'...
+Username for 'https://github.com': darkarcher1233
+Password for 'https://darkarcher1233@github.com': 
+remote: Invalid username or token. Password authentication is not supported for Git operations.
+fatal: Autenticación falló para 'https://github.com/Doronin-git/IC_Practica2_Pajaros/'
+abuda@abuda-GIGABYTE-GAMING-A16-CVH:~/IC/P2$
+
+#
+como ejecutar el programa
+
+#
+no tengo idea de como completar la comunicacion por sockets para el estado inicial del proyecto ._., dame una idea de como hacerlo
+#
+Explicame los cambios del último commit
+
+#
+Esta tarea está hecha o falta algo por hacer?
+
+#
+Ya tenemos los sockets y queremos probar lo básico antes de seguir: arrancar Central, conectar una WS, simular fuga y reparación y cerrar el Monitor, como lo0 ahgo
+
+#
+Bro, explícame rapido qué hacen Central, Monitor, Engine y el operario, y cómo se pasan los mensajes. 
+
+#
+Bro, dame pasos rápidos para probar Central
+
+#
+Bro, dame pasos rápidos para probar Central y dos WS: registro, fuga, reparación y cerrar el Monitor. que estado debería verse en cada caso
+
+#
+Bro, ayúdanos a dejar claro cómo se hablan Central, Monitor y Engine.  Kafka lo vemos luego.
+
+#
+Qué pasa si llega algo mal o se cae el socket?
+# 
+no entiendo para que sirve kafka ni como funciona, que quiere la práctica que hagamos con kafka
+
+#
+Como instalar docker
+
+#
+Que requisiotos me faltan para kafka?
+
+#
+que hago con el kafka_compose
+
+#
+ instalar kafka paso a paso
+
+# 
+Explícame qué va en peticiones, ordenes y telemetria, y quién publica y consume cada topic. Revisa el Compose y kafka_utils.py antes
+
+#
+Añade los topics que faltan para lo que pide el enunciado
+
+#
+Como ejecutar este programa
+
+#
+El FO manda PETICION y Central no responde AYUDA
+
+
+#
+Bro, estoy montando WM_Central. Échame un cable para atender varios Monitores, uno por hilo, y guardar las WS con un Lock. REG debe dejar disponible una WS que ya está dada de alta, FUGA, RESUELTA y el cierre del socket deben actualizar su estado. Mira el código que ya hay y no me toques lo qdemas
+
+#
+toca separar WM_WS_M: el principal lee los argumentos y monitor_central.py habla con Central. Ayúdame a unirlos sin abrir dos sockets por accidente. Tiene que mandar REG, esperar OK o ERROR y avisar de fuga o reparación.
+
+
+bro ya están Central y el Monitor. Dame una prueba corta pa arrancarlos, registrar dos WS, provocar una fuga, repararla y cerrar un Monitor. Dime qué debería salir en pantalla y en qué estado queda cada WS. Si algo falla, que logs miro primero?
+
+#
+No toques nada, solo dime como podemos implementar una base de datos usando SQlite como lo pide el enunciado
+
+#
+wtf is sqlite
+
+#
+Ayúdame a conectar SQLite con Central, estaciones, operarios y riegos terminados. Al reiniciar, las WS deben quedar DESCONECTADa. También revisa cómo TELEMETRIA y FIN actualizan estados y guardan el riego, si está mal corrigelo .
+
+#
+el Monitor conecta con Central, pero la WS no pasa a DISPONIBLE
+
+#
+ayúdame con SQLite en `WM_Central/db.py`: tablas para estaciones, operarios y riegos terminados. Al arrancar, las WS guardadas tienen que quedar DESCONECTADA no hace falta fingir que un riego sigue en marcha después de reiniciar Central. Mira el esquema actual antes de proponer nada.
+#
+Como ejecutar 
+
+#
+Bro, revisa `common/kafka_utils.py` y el Compose. Queremos mandar diccionarios como JSON y leerlos sin romper lo que ya funciona. Dime una prueba mínima de envío y lectura antes de enchufar Central
+
+#
+Esta es al práctica que estamos haciendo, leela y almacenala en memoria para contexto, Completa el menú de ordenes de Central segun lo que pide la tarea de trello adjunta en imagen 
+
+#
+Añadir los estados REGANDO y FUERA_SERVICIO a los de la semana 1
+
+Función cambiar_estado(ws_id, nuevo): dict + BD, con Lock
+
+Hilo consumidor del topic telemetria:
+
+telemetría → guardar caudal, volumen y operario en el dict
+
+FIN → DISPONIBLE (+ guardar en la tabla riegos si existe)
+
+Imprimir los cambios por pantalla
+
+#
+Bro, revisa el menú de Central: regar, bloquear, activar, ver estado y dar de alta una WS. Que acepte una estación o ALL, y que no arranque riegos si la WS no está disponible.
+
+# 
+La WS conecta, pero Central no la pone disponible, porque?
+
+#
+Bro, el Engine manda telemetría y Central ni se entera, donde esta el error??
+
+
+#
+NO TOQUES CODIGO, revisa el viaje de una peticion, a ver donde esta el problema
+
+#
+comprueba que BLOQUEAR corta el riego y que una fuga no se pierde si el aviso del Monitor llega después del FIN.
+
+#
+HAS ESTA PRUEBA:Probar:
+
+Arranca Central → sin WS
+
+Arranca WS_M + WS_E → Central muestra la WS DISPONIBLE
+
+f en el Engine → Central marca FUGA → r → DISPONIBLE
+
+Cerrar el Engine → FUGA (por timeout)
+
+Cerrar el Monitor → DESCONECTADA
+
+2 WS a la vez
+#
+como elimino los archivos antiguos que me dan conflicto al hacer git pull
+
+#
+Solo se ejecutan correctamente los comandos en las terminales de docker, central y los FO. Arreglalo para que todas las terminales se ejecuten correctamente y en orden correcto
+
+#
+Si desplegamos con AWS, como desplegamos desde github?
+
+#
+vamos a subir Kafka y Central a EC2 con `docker-compose.cloud.yml`. Revisa el Compose y dime qué puertos abrir, cómo llega Central a Kafka dentro de Docker y cómo evitamos que SQLite se borre al recrear el contenedor. No te inventes la IP ni datos de AWS.
+
+# 
+Relee el enunciado y crea mas tests par comprobar q todo va bien
+
+
+#
+NO TOQUES EL CÓDIGO. Por qué funciona sin conexion a internet si supuestamente usa AWS?
+
+#
+SI
+
+#
+Oh hell nah!
+#
+para iniciar con docker, comando de docker compose
+
+#
+Bro, hazme mas tests para probarlo todo: registro, riego desde el FO, autorización y rechazo, telemetría, resumen, fuga, bloqueo, reinicio y SQLit, etc... lo que mencione la práctica y lo q se te ocurra 
+
+
+#
+NO TOQUES NADA. Dame un nombre de commit para lo que se añadó a central (tarea hecha)
+
+#Vuelve a leer la práctica para contexto y corrige los errores en el flujo de activacion del rigeo entre FO, CENTRAL y WS
+
+#
+No, estña mal, el consumidor de telemetria tiene que reenviar cada dato al FO ,cada 2 segundos debes enviar el estado a FO  
+
+# 
+que falta de esta tarea?
+
+#
+Que no bro, si funciona no toques nada
+
+
+#
+dame un nombre de commit para la última tarea que hicimos
+
+#
+hay alguna forma de dividir la pantalla del ordenador en todas estas terminales desde el script?
+
+#
+accidentalmente
+
+#
+Revisa el Compose de AWS: qué puertos usa Central, cómo llega a Kafka y cómo se conserva SQLite
+
+#
+Cambia la página web actual por estas, todos estos archivos incluyelos en una carpeta llamada web, adaptalo a la práctica para que se ejecute sin problemas.
+
+#
+la primera por ahora
+
+#
+como ejecutar
+
+#
+bro, solo dame los comandos para ejecutar en cada terminal o hazme un .bat para ejecutar todo
+
+#
+el lanzador está chulo la verdad
