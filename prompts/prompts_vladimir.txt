@@ -1,0 +1,133 @@
+PROMPTS DE VLADIMIR · WaterManagement (Sistemas Distribuidos 26/27)
+La mayoría de los prompts los escribí en ruso; para esta entrega le pedí a la IA que tradujera al español estos prompts concretos.
+
+---------------------------------------------------------------------
+FASE 1 · APRENDIZAJE Y PLANIFICACIÓN
+---------------------------------------------------------------------
+
+[01] Tengo que hacer la tarjeta de Trello "WM_WS_E". Explícame qué es el
+     Engine, qué hace y cómo encaja con el Monitor y con Central. No me
+     des el código: quiero entenderlo.
+
+[02] No sé mucho de Kafka ni de Docker. Explícamelo desde cero: qué es un
+     broker, un topic, un offset y para qué sirve Docker en esta práctica.
+
+[03] Quiero aprender, no respuestas hechas. Vamos por orden: ¿dónde tengo
+     que crear cada fichero y por qué esa estructura de carpetas?
+
+[04] Mira la estructura del repositorio (adjunto captura) y dame un plan
+     paso a paso de lo que falta, en el orden en que conviene hacerlo.
+
+[05] Explícame qué hace exactamente "docker compose up -d broker" y cómo
+     se crean los topics.
+
+[06] Explícame este fichero (common/kafka_utils.py) línea a línea.
+
+[07] Hazme una página HTML de estudio con la teoría: Kafka, grupos de
+     consumidores, hilos, Lock y Event, con esquemas. Quiero repasarla
+     antes de programar.
+
+[08] ¿Qué es exactamente el FO? ¿Es como el "mando" del operario? ¿Qué
+     mensajes envía y cuáles recibe?
+
+[09] ¿En qué me tengo que centrar ahora para no bloquear a mi compañero?
+
+---------------------------------------------------------------------
+FASE 2 · ENGINE (WM_WS_E)
+---------------------------------------------------------------------
+
+[10] Antes de escribir código: ¿cuántos hilos necesita el Engine y por qué?
+     ¿Qué pasaría si todo estuviera en un solo hilo con input()?
+
+[11] El riego se puede iniciar desde la tecla m y desde una orden REGAR de
+     Kafka. Dibuja la condición de carrera y dime cómo evitarla.
+
+[12] Me da "TypeError: multiple values for keyword argument
+     auto_offset_reset" al crear el consumidor. ¿Por qué pasa y cuál es la
+     solución limpia sin romper los otros módulos?
+
+
+---------------------------------------------------------------------
+FASE 3 · OPERARIO DE CAMPO (WM_FO)
+---------------------------------------------------------------------
+
+[13] ¿Qué group_id debe usar el FO? Si dos FO comparten grupo, ¿qué
+     mensajes se pierden? ¿Y si arranca con earliest?
+
+[14] Revisa la salida de las pruebas con dos FO a la vez: ¿cada uno ve solo
+     lo suyo? ¿Hay algún caso que no estemos probando?
+
+[15] Mi compañero me pasa su lista de tareas de Central. Compárala con lo
+     que ya tenemos y dime qué hay que acordar entre los dos (formato de
+     ESTADO_WS, qué pasa con el estado tras un FIN con FUGA, etc.).
+
+---------------------------------------------------------------------
+FASE 4 · NUBE AWS
+---------------------------------------------------------------------
+
+[16] Al editar la regla del security group sale "You may not specify an
+     IPv4 CIDR for an existing referenced group id rule". ¿Qué significa?
+
+[17] ¿Por qué con Railway había que crear dos cuentas y un proyecto y con
+     AWS no? ¿Qué diferencia hay de arquitectura?
+
+[18] ¿Dónde exactamente usamos AWS en nuestro código? Enséñame los trozos
+     de código y un esquema.
+
+[19] EC2 Instance Connect no conecta ("Error establishing SSH connection")
+     aunque el puerto 22 está abierto. ¿Qué puede ser?
+---------------------------------------------------------------------
+FASE 5 · DOCKER
+---------------------------------------------------------------------
+
+[20] Explícame cómo hacer Dockerfile + docker-compose para nuestro caso:
+     ¿una imagen por módulo o una para todos? ¿Cómo encuentra el Engine a
+     su Monitor dentro de Compose?
+
+[21] git pull da "Permission denied (publickey)". ¿Cómo lo arreglo sin
+     generar claves en un PC del laboratorio?
+
+[22] Al hacer docker compose down del FO desaparece la red de las WS. ¿Por
+     qué?
+
+---------------------------------------------------------------------
+FASE 6 · PANEL DE CENTRAL (generación de código)
+---------------------------------------------------------------------
+
+[23] Describe cómo debe ser el panel de Central para Claude Code: una
+     página web (pagina.html) servida por la propia Central con
+     http.server, que pida /estado cada segundo y dibuje una tarjeta por
+     WS con los colores de la guía (verde, verde parpadeante con L/min,
+     litros y operario, rojo, naranja "Out of Service", gris), el log de
+     eventos y botones para iniciar, bloquear y activar una o todas las WS.
+
+---------------------------------------------------------------------
+FASE 7 · DESPLIEGUE EN EL LABORATORIO Y REVISIÓN CONTRA LA GUÍA
+---------------------------------------------------------------------
+
+[24] ¿Cómo lo lanzamos en dos PCs como pide el enunciado? Estamos en la
+     misma red. Reescribe la guía entera en español para mi compañero.
+
+[25] ¿Por qué el sistema funciona sin internet si Kafka está en AWS?
+
+[26] Lee la guía de corrección y el enunciado y dime con sinceridad qué no
+     cumplimos todavía. ¿Es suficiente probar todo en un PC?
+
+[27] Explícame la guía de despliegue final en ruso, corta y clara, para no
+     equivocarme el día de la corrección.
+
+---------------------------------------------------------------------
+FASE 8 · MEMORIA
+---------------------------------------------------------------------
+
+[28] Revisa la memoria: numeración de figuras, pies de figura con el mismo
+     formato y contradicciones entre apartados.
+
+[29] Analiza la memoria y propón dónde un esquema explicaría mejor que el
+     texto. Primero dime dónde y qué mostraría cada uno, sin hacerlo.
+
+[30] Haz los tres esquemas (secuencia de un riego, estados de una WS y
+     despliegue) en HTML, fondo blanco y alto contraste, con Kafka y
+     sockets en colores claramente distintos.
+
+=====================================================================
