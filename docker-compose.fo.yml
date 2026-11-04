@@ -1,4 +1,4 @@
-# docker-compose del LABORATORIO, PC 1: dos operarios (WM_FO)
+# docker-compose del LABORATORIO, PC 1: cuatro operarios (WM_FO)
 # Responsable: Vlad · Semana 4
 #
 # Uso (desde la raíz del repo, con el .env creado a partir de .env.example):
@@ -6,7 +6,7 @@
 #   docker attach fo1          (menú del operario; salir sin matarlo: Ctrl+P y luego Ctrl+Q)
 #
 # El FO solo usa Kafka (no sockets): basta con KAFKA_BROKER=<IP_EC2>:9092 en el .env.
-# Pantallas web: FO1 http://localhost:8300 · FO2 http://localhost:8301
+# Pantallas web: FO1 http://localhost:8300 · FO2 http://localhost:8301 · FO3 :8302 · FO4 :8303
 # Los ficheros de WM_FO/peticiones/ van dentro de la imagen (COPY . .).
 
 name: sd-fo   # nombre de proyecto propio: no se mezcla con el Kafka de docker-compose.yml
@@ -27,6 +27,24 @@ services:
     container_name: fo2
     ports: ["8301:8300"]   # pantalla web
     command: ["python", "-m", "WM_FO.WM_FO", "${KAFKA_BROKER:?Falta KAFKA_BROKER en el .env}", "FO2"]
+    restart: on-failure
+    stdin_open: true
+    tty: true
+
+  fo3:
+    image: sd-app
+    container_name: fo3
+    ports: ["8302:8300"]   # pantalla web
+    command: ["python", "-m", "WM_FO.WM_FO", "${KAFKA_BROKER:?Falta KAFKA_BROKER en el .env}", "FO3"]
+    restart: on-failure
+    stdin_open: true
+    tty: true
+
+  fo4:
+    image: sd-app
+    container_name: fo4
+    ports: ["8303:8300"]   # pantalla web
+    command: ["python", "-m", "WM_FO.WM_FO", "${KAFKA_BROKER:?Falta KAFKA_BROKER en el .env}", "FO4"]
     restart: on-failure
     stdin_open: true
     tty: true
