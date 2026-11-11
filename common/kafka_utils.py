@@ -40,9 +40,9 @@ class _LazyKafkaProducer:
     def send(self, topic: str, value: Any = None, *args, **kwargs):
         return self._get_producer().send(topic, value=value, *args, **kwargs)
 
-    def flush(self):
+    def flush(self, timeout=None):
         if self._producer is not None:
-            self._producer.flush()
+            self._producer.flush(timeout=timeout)
 
     def close(self):
         if self._producer is not None:
@@ -126,7 +126,37 @@ def consumidor(broker: str, topic: str, group_id: str | None = None, **kwargs) -
     return _LazyKafkaConsumer(broker, topic, group_id=group_id, **kwargs)
 
 
+TOPICS = (TOPIC_PETICIONES, TOPIC_ORDENES, TOPIC_TELEMETRIA)
+
+
+def crear_topics(broker: str, topics=TOPICS) -> list[str]:
+    """Crea en Kafka los topics que falten (1 partición, réplica 1: un solo broker).
+
+    Devuelve la lista de topics creados ([] si ya existían todos).
+    Lanza una excepción si Kafka no responde: quien la llama lo reintenta.
+    """
+    from kafka.admin import KafkaAdminClient, NewTopic
+    from kafka.errors import TopicAlreadyExistsError
+
+    admin = KafkaAdminClient(bootstrap_servers=broker, request_timeout_ms=5000)
+    try:
+        existentes = set(admin.list_topics())
+        faltan = [t for t in topics if t not in existentes]
+        creados = []
+        for topic in faltan:   # de uno en uno: si otro lo crea a la vez, no estropea los demás
+            try:
+                admin.create_topics([NewTopic(topic, num_partitions=1, replication_factor=1)])
+                creados.append(topic)
+            except TopicAlreadyExistsError:
+                pass   # lo creó otro proceso (o Kafka al suscribirse un consumidor): ya está
+        return creados
+    finally:
+        admin.close()
+
+
 __all__ = [
+    "TOPICS",
+    "crear_topics",
     "TOPIC_PETICIONES",
     "TOPIC_ORDENES",
     "TOPIC_TELEMETRIA",

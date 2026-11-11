@@ -1,0 +1,9 @@
+# Peticiones del operario FO4 (modo fichero: opción 3 del menú de WM_FO)
+# Formato: ws_id;duracion_en_segundos   (líneas vacías y con # se ignoran)
+#
+# 1) Riego largo en WS7                        -> AUTORIZADO
+# 2) Riego en WS8                              -> AUTORIZADO
+# 3) WS que no existe                          -> DENEGADO
+WS7;15
+WS8;6
+WS10;5

@@ -3,7 +3,7 @@
 #
 # Cada módulo NO tiene su propio Dockerfile: la misma imagen (sd-app) sirve para todos y
 # solo cambia el comando, que se pone en el docker-compose, p. ej.
-#   python -m ws.WM_WS_M 6000 host.docker.internal:5050 WS1 "Parque Norte"
+#   python -m WM_WS.WM_WS_M 6000 host.docker.internal:5050 WS1 "Parque Norte"
 # Prueba rápida:  docker build -t sd-app .  &&  docker run --rm sd-app
 
 FROM python:3.12-slim

@@ -1,0 +1,9 @@
+# Peticiones del operario FO3 (modo fichero: opción 3 del menú de WM_FO)
+# Formato: ws_id;duracion_en_segundos   (líneas vacías y con # se ignoran)
+#
+# 1) Riego normal en WS5                       -> AUTORIZADO, TELEMETRIA, RESUMEN motivo=TIEMPO
+# 2) Riego en WS6                              -> AUTORIZADO
+# 3) WS7 coincide con la 1ª de FO4             -> uno de los dos recibe DENEGADO (WS ocupada)
+WS5;10
+WS6;6
+WS7;8

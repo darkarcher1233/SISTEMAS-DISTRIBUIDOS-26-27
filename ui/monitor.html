@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Monitor – WaterManagement</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;600;750&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/comun.css">
+<style>
+main { display: flex; flex-direction: column; gap: 20px; padding: 20px var(--margen) 32px; max-width: 900px; }
+.salud { border-radius: var(--radio); padding: 16px 20px; }
+.salud h2 { font-size: 1.6rem; font-weight: 750; }
+.salud p { margin: 4px 0 0; font-weight: 600; }
+.enlaces { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+.enlace h3 { font-size: 1rem; font-weight: 600; margin-bottom: 6px; }
+.enlace p { margin: 0; }
+.enlace .tenue { font-size: .92rem; }
+</style>
+</head>
+<body>
+<header class="cabecera">
+  <div class="marca">
+    <h1 id="titulo">Monitor</h1>
+    <p id="subtitulo">&nbsp;</p>
+  </div>
+  <dl class="sistema">
+    <div><dt>Escucha al Engine en</dt><dd id="puerto">–</dd></div>
+  </dl>
+</header>
+<main>
+  <section class="salud" id="salud" aria-live="polite"><h2>–</h2><p>&nbsp;</p></section>
+  <div class="enlaces">
+    <section class="bloque enlace">
+      <h3>CENTRAL</h3>
+      <p id="central">–</p>
+      <p class="tenue" id="central-dir"></p>
+    </section>
+    <section class="bloque enlace">
+      <h3>Engine de la estación</h3>
+      <p id="engine">–</p>
+      <p class="tenue">Comprobación de salud (HC) cada segundo; sin respuesta en 2 s se avisa de FUGA a CENTRAL.</p>
+    </section>
+  </div>
+  <section class="bloque registro" aria-labelledby="t-registro">
+    <h2 id="t-registro">Registro del monitor</h2>
+    <ol id="eventos"></ol>
+  </section>
+</main>
+
+<script src="/comun.js"></script>
+<script>
+function pintar(d) {
+  document.title = `Monitor ${d.ws_id} – WaterManagement`;
+  $('#titulo').textContent = `Monitor de ${d.ws_id}`;
+  $('#subtitulo').textContent = d.ubicacion;
+  $('#puerto').textContent = d.puerto_engine;
+
+  const salud = $('#salud');
+  const [claseSalud, htmlSalud] = !d.salud_ok
+    ? ['fuga', `<h2>Avería</h2><p>${esc(d.motivo)}. Se notifica como FUGA a CENTRAL</p>`]
+    : d.engine ? ['disponible', '<h2>Salud correcta</h2><p>El engine responde OK a cada comprobación</p>']
+    : ['desconectada', '<h2>Esperando al engine</h2><p>Todavía no se ha conectado ningún WM_WS_E</p>'];
+  if (salud.className !== 'salud estado-' + claseSalud) salud.className = 'salud estado-' + claseSalud;
+  fijarHtml(salud, htmlSalud);
+
+  fijarHtml($('#central'), d.con_central
+    ? '<span class="punto ok"></span>Autenticada (REG aceptado); el socket sigue abierto'
+    : `<span class="punto mal"></span>${esc(d.error_central || 'Imposible conectar con WM_Central')}. Reintentando…`);
+  $('#central-dir').textContent = d.central;
+  fijarHtml($('#engine'), d.engine
+    ? `<span class="punto ok"></span>Conectado desde ${esc(d.engine)}`
+    : '<span class="punto mal"></span>No conectado');
+  pintarEventos($('#eventos'), d.eventos);
+}
+sondear('/api/estado', pintar, 'el monitor');
+</script>
+</body>
+</html>

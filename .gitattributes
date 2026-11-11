@@ -1,0 +1,2 @@
+# Los scripts de bash se ejecutan en Linux (EC2): siempre con saltos de línea LF
+*.sh text eol=lf

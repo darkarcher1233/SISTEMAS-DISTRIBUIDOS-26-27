@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CENTRAL – WaterManagement</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;600;750&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/comun.css">
+<style>
+.recuento { list-style: none; display: flex; flex-wrap: wrap; gap: 8px 22px; margin: 0; padding: 14px var(--margen); border-bottom: 1px solid var(--linea); }
+.recuento li { display: flex; align-items: center; gap: 8px; }
+.recuento b { font-size: 1.25rem; min-width: 1.4ch; text-align: right; }
+.muestra { width: 22px; height: 14px; border-radius: 3px; }
+
+.rejilla { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 28px; padding: 24px var(--margen) 48px; align-items: start; }
+@media (max-width: 900px) { .rejilla { grid-template-columns: 1fr; } }
+.izquierda { display: flex; flex-direction: column; gap: 28px; min-width: 0; }
+.lateral { display: flex; flex-direction: column; gap: 18px; }
+
+.parque + .parque { margin-top: 26px; }
+.parque h2 { font-size: 1.05rem; font-weight: 600; margin-bottom: 10px; }
+.parque h2 span { color: var(--tenue); font-weight: 400; margin-left: 8px; }
+.muro { display: grid; grid-template-columns: repeat(auto-fill, minmax(188px, 1fr)); gap: 10px; }
+.ws { display: flex; flex-direction: column; gap: 2px; min-height: 124px; padding: 12px 14px; border: 0; border-radius: var(--radio); text-align: left; cursor: pointer; }
+.ws .id { font-size: 1.4rem; font-weight: 750; }
+.ws .est { font-weight: 600; }
+.ws .datos { margin-top: auto; font-size: .92rem; }
+.ws[aria-pressed="true"] { outline: 3px solid var(--tinta); outline-offset: 3px; }
+.vacio { padding: 28px; border: 1px dashed var(--linea); border-radius: var(--radio); color: var(--tenue); max-width: 60ch; }
+#detalle .ficha { margin: 12px 0 14px; }
+details.bloque summary { cursor: pointer; font-weight: 600; }
+.operarios { list-style: none; margin: 10px 0 12px; padding: 0; columns: 2; }
+.operarios li { break-inside: avoid; padding: 2px 0; }
+.alta { display: flex; flex-wrap: wrap; gap: 8px; }
+.alta input { flex: 1 1 8rem; padding: 7px 8px; border: 1px solid var(--linea); border-radius: 4px; }
+</style>
+</head>
+<body>
+<header class="cabecera">
+  <div class="marca">
+    <h1>WaterManagement</h1>
+    <p>Central de riego de parques y jardines</p>
+  </div>
+  <dl class="sistema">
+    <div><dt>Kafka</dt><dd id="kafka">–</dd></div>
+    <div><dt>Monitores conectados</dt><dd id="monitores">–</dd></div>
+    <div><dt>Puerto de sockets</dt><dd id="puerto">–</dd></div>
+    <div><dt>En marcha</dt><dd id="uptime">–</dd></div>
+  </dl>
+</header>
+
+<ul class="recuento" id="recuento" aria-label="Estaciones por estado"></ul>
+
+<main class="rejilla">
+  <div class="izquierda">
+    <section id="red" aria-label="Estaciones de riego por parque"></section>
+    <section class="bloque registro" aria-labelledby="t-eventos">
+      <h2 id="t-eventos">Registro de eventos</h2>
+      <ol id="eventos"></ol>
+    </section>
+  </div>
+
+  <aside class="lateral">
+    <section class="bloque" aria-labelledby="t-detalle">
+      <h2 id="t-detalle">Estación seleccionada</h2>
+      <div id="detalle"><p class="tenue">Selecciona una estación para ver su detalle y darle órdenes.</p></div>
+      <div class="acciones" id="acciones-ws" hidden>
+        <label class="campo">Duración (s)<input id="dur-ws" type="number" min="1" max="3600" value="60"></label>
+        <button class="boton" id="b-regar">Iniciar riego</button>
+        <button class="boton secundario" id="b-bloquear">Bloquear</button>
+        <button class="boton secundario" id="b-activar">Activar</button>
+      </div>
+    </section>
+
+    <section class="bloque" aria-labelledby="t-todas">
+      <h2 id="t-todas">Todas las estaciones</h2>
+      <div class="acciones">
+        <label class="campo">Duración (s)<input id="dur-todas" type="number" min="1" max="3600" value="60"></label>
+        <button class="boton" data-todas="regar">Iniciar riego</button>
+        <button class="boton secundario" data-todas="bloquear">Bloquear</button>
+        <button class="boton secundario" data-todas="activar">Activar</button>
+      </div>
+    </section>
+
+    <details class="bloque">
+      <summary>Dar de alta una estación</summary>
+      <p class="tenue" style="margin:10px 0">Solo se autentican las WS dadas de alta. Quedará <b>Desconectada</b> hasta que se conecte su Monitor.</p>
+      <form class="alta" id="form-alta-ws">
+        <input id="ws-alta-id" placeholder="Id, p. ej. WS3" required aria-label="Id de la estación">
+        <input id="ws-alta-ubic" placeholder="Parque o jardín" required aria-label="Ubicación de la estación">
+        <button class="boton">Dar de alta</button>
+      </form>
+    </details>
+
+    <details class="bloque">
+      <summary>Operarios dados de alta</summary>
+      <ul class="operarios" id="operarios"></ul>
+      <form class="alta" id="form-alta">
+        <input id="alta-id" placeholder="Id, p. ej. FO4" required aria-label="Id del operario">
+        <input id="alta-nombre" placeholder="Nombre" required aria-label="Nombre del operario">
+        <button class="boton">Dar de alta</button>
+      </form>
+    </details>
+  </aside>
+</main>
+
+<script src="/comun.js"></script>
+<script>
+const COLOR = {DISPONIBLE: 'var(--disponible)', REGANDO: 'linear-gradient(90deg, var(--disponible) 50%, var(--regando-oscuro) 50%)',
+               FUGA: 'var(--fuga)', FUERA_SERVICIO: 'var(--fuera)', DESCONECTADA: 'var(--desconectada)'};
+let datos = null, seleccion = null, firmaRed = '';
+const fichas = new Map();
+
+function textoFicha(e) {
+  switch (e.estado) {
+    case 'REGANDO': return `${num(e.caudal)} L/min<br>${num(e.volumen)} L suministrados<br>Operario ${esc(e.operario)}`;
+    case 'FUGA': return esc(e.motivo_fuga || 'Fuga detectada');
+    case 'FUERA_SERVICIO': return 'Bloqueada por CENTRAL';
+    case 'DESCONECTADA': return 'Sin conexión con CENTRAL';
+    default: return `${num(0)} L/min<br>Último riego ${hace(e.ultimo_riego, datos.ahora)}<br>Total ${num(e.total)} L`;
+  }
+}
+
+function pintarRed() {
+  const red = $('#red');
+  if (!datos.estaciones.length) {
+    fijarHtml(red, '<p class="vacio">Aún no hay estaciones. Arranca un WM_WS_M para darla de alta: aparecerá aquí en cuanto se registre (REG).</p>');
+    firmaRed = ''; fichas.clear(); return;
+  }
+  const parques = new Map();
+  for (const e of datos.estaciones) {
+    if (!parques.has(e.ubicacion)) parques.set(e.ubicacion, []);
+    parques.get(e.ubicacion).push(e);
+  }
+  const orden = [...parques.keys()].sort((a, b) => a.localeCompare(b, 'es'));
+  const firma = orden.map(p => p + ':' + parques.get(p).map(e => e.id).join(',')).join('|');
+  if (firma !== firmaRed) {  // solo se reconstruye si cambia la composición: el parpadeo no se reinicia
+    firmaRed = firma; fichas.clear();
+    fijarHtml(red, orden.map(p => {
+      const n = parques.get(p).length;
+      return `<section class="parque"><h2>${esc(p)}<span>${n} ${n === 1 ? 'estación' : 'estaciones'}</span></h2>
+        <div class="muro">${parques.get(p).map(e => `<button class="ws" data-id="${esc(e.id)}" aria-pressed="false">
+          <span class="id">${esc(e.id)}</span><span class="est"></span><span class="datos"></span></button>`).join('')}</div></section>`;
+    }).join(''));
+    red.querySelectorAll('.ws').forEach(b => {
+      fichas.set(b.dataset.id, b);
+      b.addEventListener('click', () => { seleccion = b.dataset.id; pintar(datos); });
+    });
+  }
+  for (const e of datos.estaciones) {
+    const b = fichas.get(e.id);
+    const clase = 'ws estado-' + CLASE[e.estado];
+    if (b.className !== clase) b.className = clase;
+    b.setAttribute('aria-pressed', String(e.id === seleccion));
+    b.setAttribute('aria-label', `${e.id}, ${ETIQUETA[e.estado]}`);
+    b.querySelector('.est').textContent = ETIQUETA[e.estado];
+    fijarHtml(b.querySelector('.datos'), textoFicha(e));
+  }
+}
+
+function pintarDetalle() {
+  const e = datos.estaciones.find(x => x.id === seleccion);
+  $('#acciones-ws').hidden = !e;
+  if (!e) { fijarHtml($('#detalle'), '<p class="tenue">Selecciona una estación para ver su detalle y darle órdenes.</p>'); return; }
+  const filas = [['Ubicación', esc(e.ubicacion)]];
+  if (e.estado !== 'DESCONECTADA') filas.push(['Caudal', `${num(e.caudal)} L/min`]);
+  if (e.estado === 'REGANDO') {
+    filas.push(['Suministrado', `${num(e.volumen)} L`], ['Operario', esc(e.operario)],
+               ['Tiempo', e.duracion ? `${e.segundos} de ${e.duracion} s<div class="progreso"><i style="width:${Math.min(100, 100 * e.segundos / e.duracion)}%"></i></div>` : `${e.segundos} s`]);
+  }
+  if (e.estado === 'FUGA') filas.push(['Avería', esc(e.motivo_fuga)]);
+  filas.push(['Agua suministrada', `${num(e.total, 2)} L en total`], ['Último riego', hace(e.ultimo_riego, datos.ahora)]);
+  fijarHtml($('#detalle'), `<p><b style="font-size:1.3rem">${esc(e.id)}</b>&ensp;<span class="pastilla estado-${CLASE[e.estado] === 'regando' ? 'disponible' : CLASE[e.estado]}">${ETIQUETA[e.estado]}</span></p>
+    <dl class="ficha">${filas.map(([t, v]) => `<dt>${t}</dt><dd>${v}</dd>`).join('')}</dl>`);
+  $('#b-regar').disabled = e.estado !== 'DISPONIBLE';
+  $('#b-regar').title = e.estado === 'DISPONIBLE' ? '' : 'Solo se puede regar una estación disponible';
+  $('#b-bloquear').disabled = e.bloqueada || e.estado === 'DESCONECTADA';
+  $('#b-activar').disabled = !e.bloqueada;
+}
+
+function pintar(d) {
+  datos = d;
+  const c = d.central;
+  const claseKafka = c.kafka === 'conectado' ? 'ok' : c.kafka === 'conectando' ? '' : 'mal';
+  fijarHtml($('#kafka'), `<span class="punto ${claseKafka}"></span>${esc(c.kafka)}`);
+  $('#kafka').title = c.broker;
+  $('#monitores').textContent = c.monitores;
+  $('#puerto').textContent = c.puerto_sockets;
+  $('#uptime').textContent = duracion(d.ahora - c.inicio);
+  fijarHtml($('#recuento'), Object.keys(ETIQUETA).map(k =>
+    `<li><span class="muestra" style="background:${COLOR[k]}"></span><b>${d.recuento[k] || 0}</b>${ETIQUETA[k]}</li>`).join(''));
+  pintarRed();
+  pintarDetalle();
+  pintarEventos($('#eventos'), d.eventos);
+  fijarHtml($('#operarios'), d.operarios.map(o => `<li>${esc(o.id)} <span class="tenue">${esc(o.nombre)}</span></li>`).join(''));
+}
+
+const refrescar = sondear('/api/estado', pintar, 'CENTRAL');
+const orden = async cuerpo => { await enviar('/api/orden', cuerpo); refrescar(); };
+$('#b-regar').addEventListener('click', () => orden({accion: 'regar', ws: seleccion, duracion: +$('#dur-ws').value}));
+$('#b-bloquear').addEventListener('click', () => orden({accion: 'bloquear', ws: seleccion}));
+$('#b-activar').addEventListener('click', () => orden({accion: 'activar', ws: seleccion}));
+document.querySelectorAll('[data-todas]').forEach(b => b.addEventListener('click', () => {
+  const accion = b.dataset.todas;
+  const texto = {regar: 'Iniciar un riego', bloquear: 'Bloquear', activar: 'Activar'}[accion];
+  if (confirm(`¿${texto} en todas las estaciones?`)) orden({accion, ws: '*', duracion: +$('#dur-todas').value});
+}));
+$('#form-alta-ws').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const r = await enviar('/api/estaciones', {id: $('#ws-alta-id').value.trim(), ubicacion: $('#ws-alta-ubic').value.trim()});
+  if (r.ok) ev.target.reset();
+  refrescar();
+});
+$('#form-alta').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const r = await enviar('/api/operarios', {id: $('#alta-id').value.trim(), nombre: $('#alta-nombre').value.trim()});
+  if (r.ok) ev.target.reset();
+  refrescar();
+});
+</script>
+</body>
+</html>
