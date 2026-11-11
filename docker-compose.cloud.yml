@@ -41,6 +41,10 @@ services:
       KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
       KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR: "1"
       KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      # La hora de cada mensaje la pone el broker al recibirlo (no el reloj del PC que lo envía):
+      # Central compara con su propio reloj (misma EC2) para ver si una PETICION ha caducado, y un
+      # PC del laboratorio con la hora mal (p. ej. Docker Desktop tras suspender) no las caduca todas.
+      KAFKA_CFG_LOG_MESSAGE_TIMESTAMP_TYPE: LogAppendTime
       # t3.micro = 1 GB de RAM: Kafka no puede quedarse más de 512 MB
       KAFKA_HEAP_OPTS: -Xmx512m -Xms512m
     volumes:
