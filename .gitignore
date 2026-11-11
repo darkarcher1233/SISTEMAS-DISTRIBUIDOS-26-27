@@ -33,3 +33,6 @@ docs/*.pdf
 
 # Riego en curso y FIN pendientes del Engine (WM_WS_E) cuando se ejecuta sin Docker
 datos/
+
+# Datos de conexión a la EC2 de central_aws.ps1 (IP, ruta del .pem)
+deploy/ec2.local
