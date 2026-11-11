@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CENTRAL – WaterManagement</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;600;750&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/comun.css">
+<style>
+/* Misma maqueta que la vista #central del lanzador (ui/lanzador.html), pero servida por la propia
+   CENTRAL: barra lateral con Kafka, estaciones y operarios + el panel de CENTRAL (panel.html) dentro. */
+html, body { height: 100%; }
+body { display: grid; grid-template-columns: 290px minmax(0, 1fr); }
+@media (max-width: 860px) { body { grid-template-columns: 1fr; } .barra { border-right: 0; border-bottom: 1px solid var(--linea); } }
+
+.barra { background: var(--superficie); border-right: 1px solid var(--linea); overflow-y: auto; padding: 20px 16px 24px; display: flex; flex-direction: column; gap: 18px; }
+.barra .marca h1 { font-size: 1.45rem; }
+.kafka { border: 1px solid var(--linea); border-radius: var(--radio); padding: 10px 12px; }
+.kafka p { margin: 0; }
+nav h2 { font-size: .95rem; font-weight: 600; color: var(--tenue); margin: 14px 0 6px; }
+nav h2:first-child { margin-top: 0; }
+.item { display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border: 0; border-radius: var(--radio); background: none; color: inherit; text-align: left; text-decoration: none; cursor: pointer; }
+.item:hover { background: var(--papel); }
+.item[aria-current="page"] { background: var(--papel); box-shadow: inset 3px 0 0 var(--accion); }
+.item b { display: block; }
+.item small { display: block; color: var(--tenue); font-size: .85rem; }
+.item .estado { font-size: .85rem; color: var(--tenue); white-space: nowrap; }
+.punto.regando { background: var(--disponible); animation: parpadeo-punto 1s steps(1, end) infinite; }
+@keyframes parpadeo-punto { 50% { background: var(--regando-oscuro); } }
+.pie { font-size: .85rem; margin: auto 0 0; }
+
+.vista { display: flex; flex-direction: column; min-height: 100vh; min-width: 0; }
+.vista-cabecera { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 24px; padding: 14px var(--margen); border-bottom: 1px solid var(--linea); background: var(--superficie); }
+.vista-cabecera h2 { font-size: 1.35rem; font-weight: 750; }
+.vista-cabecera p { margin: 2px 0 0; color: var(--tenue); }
+.banda { background: var(--fuera); color: var(--tinta); padding: 10px var(--margen); font-weight: 600; }
+.paneles { flex: 1; display: grid; padding: 14px var(--margen) 18px; min-height: 560px; }
+.panel { display: flex; flex-direction: column; min-height: 0; border: 1px solid var(--linea); border-radius: var(--radio); background: var(--superficie); overflow: hidden; }
+.pie-panel { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 8px 12px; border-bottom: 1px solid var(--linea); font-size: .92rem; }
+.pie-panel a { margin-left: auto; color: var(--accion); }
+.panel iframe { flex: 1; width: 100%; border: 0; background: var(--papel); }
+</style>
+</head>
+<body>
+<aside class="barra">
+  <div class="marca">
+    <h1>WaterManagement</h1>
+    <p>CENTRAL en la nube</p>
+  </div>
+  <section class="kafka" id="kafka" aria-live="polite"></section>
+  <nav id="nav" aria-label="Módulos"></nav>
+  <p class="tenue pie">Las estaciones y los operarios corren en los PCs del laboratorio; aquí se ve su estado según CENTRAL.</p>
+</aside>
+
+<main class="vista">
+  <header class="vista-cabecera" id="cabecera"></header>
+  <div class="banda" id="banda-kafka" hidden></div>
+  <div class="paneles">
+    <section class="panel">
+      <div class="pie-panel"><b>Panel de CENTRAL</b><span class="tenue" id="puerto-panel"></span><a href="/panel.html" target="_blank" rel="noopener">Abrir en otra pestaña</a></div>
+      <iframe src="/panel.html" title="Panel de CENTRAL" id="marco"></iframe>
+    </section>
+  </div>
+</main>
+
+<script src="/comun.js"></script>
+<script>
+const PUNTO = {DISPONIBLE: 'ok', REGANDO: 'regando', FUGA: 'mal', FUERA_SERVICIO: 'medio', DESCONECTADA: ''};
+let seleccion = null;
+
+function item(attrs, titulo, sub, clase, texto, actual) {
+  return `<button class="item" ${attrs}${actual ? ' aria-current="page"' : ''}>
+    <span><b>${esc(titulo)}</b><small>${esc(sub)}</small></span><span class="estado"><span class="punto ${clase}"></span>${esc(texto)}</span></button>`;
+}
+
+function pintar(d) {
+  const c = d.central;
+  const [kc, kt] = c.kafka === 'conectado' ? ['ok', 'disponible'] : c.kafka === 'conectando' ? ['medio', 'conectando'] : ['mal', 'no responde'];
+  fijarHtml($('#kafka'), `<p><b>Kafka</b> <span class="tenue">${esc(c.broker)}</span></p><p><span class="punto ${kc}"></span>${kt}</p>`);
+
+  fijarHtml($('#nav'), `<h2>CENTRAL</h2>` +
+    item('data-central', 'CENTRAL', 'Panel y servidor de sockets', 'ok', 'en marcha', !seleccion) +
+    `<h2>Estaciones</h2>` + (d.estaciones.map(e =>
+      item(`data-ws="${esc(e.id)}"`, e.id, e.ubicacion, PUNTO[e.estado] ?? '', ETIQUETA[e.estado] || e.estado, e.id === seleccion)).join('')
+      || '<p class="tenue">Ninguna todavía.</p>') +
+    `<h2>Operarios</h2>` + (d.operarios.map(o =>
+      `<div class="item" style="cursor:default"><span><b>${esc(o.id)}</b><small>${esc(o.nombre)}</small></span></div>`).join('')
+      || '<p class="tenue">Ninguno todavía.</p>'));
+
+  fijarHtml($('#cabecera'), `<div><h2>CENTRAL</h2><p>Sockets en el puerto ${esc(c.puerto_sockets)}, panel en el ${esc(location.port || 80)} · ${esc(c.monitores)} monitores conectados · en marcha ${esc(duracion(d.ahora - c.inicio))}</p></div>`);
+  $('#puerto-panel').textContent = `puerto ${location.port || 80}`;
+
+  const banda = $('#banda-kafka');
+  banda.hidden = c.kafka === 'conectado';
+  banda.textContent = `Kafka no responde en ${c.broker}. CENTRAL lo reintenta sola cada pocos segundos.`;
+}
+
+// Clic en una estación de la barra = seleccionarla en el panel de dentro (mismo origen)
+document.addEventListener('click', ev => {
+  const b = ev.target.closest('.item[data-ws], .item[data-central]');
+  if (!b) return;
+  const doc = $('#marco').contentDocument;
+  if (b.dataset.ws) {
+    seleccion = b.dataset.ws;
+    const ficha = doc && doc.querySelector(`.ws[data-id="${CSS.escape(seleccion)}"]`);
+    if (ficha) { ficha.click(); ficha.scrollIntoView({block: 'center', behavior: 'smooth'}); }
+  } else {
+    seleccion = null;
+    doc && doc.scrollingElement && doc.scrollingElement.scrollTo({top: 0, behavior: 'smooth'});
+  }
+  refrescar();
+});
+
+const refrescar = sondear('/api/estado', pintar, 'CENTRAL');
+</script>
+</body>
+</html>

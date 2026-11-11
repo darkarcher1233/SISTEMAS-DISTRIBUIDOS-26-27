@@ -1,4 +1,4 @@
-# docker-compose del LABORATORIO, PC 2: ocho Watering Stations (Monitor + Engine de cada una)
+# docker-compose del LABORATORIO, PC 2: cuatro Watering Stations (Monitor + Engine de cada una)
 # Responsable: Vlad · Semana 4
 #
 # Uso (desde la raíz del repo, con el .env creado a partir de .env.example):
@@ -12,7 +12,7 @@
 #   crea una red propia con DNS interno. Todos los Monitor escuchan en el 6000, pero cada uno
 #   en su contenedor, así que no chocan.
 # - Si el Engine arranca antes que su Monitor, o el Monitor antes que Central, reintentan solos.
-# - Pantallas web: Monitor WS1 http://localhost:8100 · Engine WS1 :8200 · WS2 :8101 y :8201 ... WS8 :8107 y :8207
+# - Pantallas web: Monitor WS1 http://localhost:8100 · Engine WS1 :8200 · WS2 :8101 y :8201 ... WS4 :8103 y :8203
 
 name: sd-ws   # nombre de proyecto propio: no se mezcla con el Kafka de docker-compose.yml
 
@@ -106,100 +106,8 @@ services:
     stdin_open: true
     tty: true
 
-  ws5_m:
-    image: sd-app
-    container_name: ws5_m
-    ports: ["8104:8100"]   # pantalla web
-    command: ["python", "-m", "WM_WS.WM_WS_M", "6000", "${CENTRAL:?Falta CENTRAL en el .env}", "WS5", "Parque Centro"]
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    restart: on-failure
-
-  ws5_e:
-    image: sd-app
-    container_name: ws5_e
-    ports: ["8204:8200"]   # pantalla web
-    command: ["python", "-m", "WM_WS.WM_WS_E", "${KAFKA_BROKER:?Falta KAFKA_BROKER en el .env}", "ws5_m:6000"]
-    volumes:
-      - ws5_datos:/app/datos   # riego en curso: si el Engine cae, al volver envía lo regado
-    depends_on:
-      - ws5_m
-    restart: on-failure
-    stdin_open: true
-    tty: true
-
-  ws6_m:
-    image: sd-app
-    container_name: ws6_m
-    ports: ["8105:8100"]   # pantalla web
-    command: ["python", "-m", "WM_WS.WM_WS_M", "6000", "${CENTRAL:?Falta CENTRAL en el .env}", "WS6", "Parque Rio"]
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    restart: on-failure
-
-  ws6_e:
-    image: sd-app
-    container_name: ws6_e
-    ports: ["8205:8200"]   # pantalla web
-    command: ["python", "-m", "WM_WS.WM_WS_E", "${KAFKA_BROKER:?Falta KAFKA_BROKER en el .env}", "ws6_m:6000"]
-    volumes:
-      - ws6_datos:/app/datos   # riego en curso: si el Engine cae, al volver envía lo regado
-    depends_on:
-      - ws6_m
-    restart: on-failure
-    stdin_open: true
-    tty: true
-
-  ws7_m:
-    image: sd-app
-    container_name: ws7_m
-    ports: ["8106:8100"]   # pantalla web
-    command: ["python", "-m", "WM_WS.WM_WS_M", "6000", "${CENTRAL:?Falta CENTRAL en el .env}", "WS7", "Parque Lago"]
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    restart: on-failure
-
-  ws7_e:
-    image: sd-app
-    container_name: ws7_e
-    ports: ["8206:8200"]   # pantalla web
-    command: ["python", "-m", "WM_WS.WM_WS_E", "${KAFKA_BROKER:?Falta KAFKA_BROKER en el .env}", "ws7_m:6000"]
-    volumes:
-      - ws7_datos:/app/datos   # riego en curso: si el Engine cae, al volver envía lo regado
-    depends_on:
-      - ws7_m
-    restart: on-failure
-    stdin_open: true
-    tty: true
-
-  ws8_m:
-    image: sd-app
-    container_name: ws8_m
-    ports: ["8107:8100"]   # pantalla web
-    command: ["python", "-m", "WM_WS.WM_WS_M", "6000", "${CENTRAL:?Falta CENTRAL en el .env}", "WS8", "Parque Bosque"]
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    restart: on-failure
-
-  ws8_e:
-    image: sd-app
-    container_name: ws8_e
-    ports: ["8207:8200"]   # pantalla web
-    command: ["python", "-m", "WM_WS.WM_WS_E", "${KAFKA_BROKER:?Falta KAFKA_BROKER en el .env}", "ws8_m:6000"]
-    volumes:
-      - ws8_datos:/app/datos   # riego en curso: si el Engine cae, al volver envía lo regado
-    depends_on:
-      - ws8_m
-    restart: on-failure
-    stdin_open: true
-    tty: true
-
 volumes:
   ws1_datos:
   ws2_datos:
   ws3_datos:
   ws4_datos:
-  ws5_datos:
-  ws6_datos:
-  ws7_datos:
-  ws8_datos:

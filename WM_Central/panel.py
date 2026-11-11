@@ -4,7 +4,8 @@ Responsable: Vlad · Tarjeta Trello: "[Vlad] Panel de CENTRAL"
 Lo usa: WM_Central/WM_Central.py -> iniciar_panel(estado_fn, acciones)
 
 CÓMO FUNCIONA (servidor común en common/web.py, página en ui/panel.html)
-  - GET  /             -> ui/panel.html
+  - GET  /             -> ui/central.html (barra lateral como el lanzador + panel.html dentro)
+  - GET  /panel.html   -> ui/panel.html (el panel solo)
   - GET  /api/estado   -> JSON de foto_estado(); la página lo pide cada 1 s
   - POST /api/orden    -> {"accion": "regar"|"bloquear"|"activar", "ws": id o "*", "duracion": s}
   - POST /api/operarios-> {"id", "nombre"}: alta de un operario en la BD
@@ -76,4 +77,5 @@ def iniciar_panel(estado_fn, acciones, puerto=None):
     """
     if puerto is None:
         puerto = int(os.environ.get("PANEL_PORT", "8080"))
-    return iniciar_web("panel.html", estado_fn, acciones, puerto=puerto, nombre="Panel web de Central")
+    return iniciar_web("central.html", estado_fn, acciones, puerto=puerto, nombre="Panel web de Central",
+                       extras={"/panel.html": "panel.html"})

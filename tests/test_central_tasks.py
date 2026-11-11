@@ -234,10 +234,12 @@ def test_fin_por_fuga_deja_la_ws_en_fuga_aunque_el_monitor_avise_despues():
     assert estaciones["ws-f"]["estado"] == "FUGA"
 
 
-def test_bd_nueva_trae_ws1_y_ws2_desconectadas():
+def test_bd_nueva_trae_ws1_a_ws4_desconectadas():
     nombres = {ws_id: (ubic, estado) for ws_id, ubic, estado in db.get_estaciones()}
     assert nombres["WS1"] == ("Parque Norte", DESCONECTADA)
     assert nombres["WS2"] == ("Parque Sur", DESCONECTADA)
+    assert nombres["WS3"] == ("Parque Este", DESCONECTADA)
+    assert nombres["WS4"] == ("Parque Oeste", DESCONECTADA)
 
 
 def test_autenticar_deniega_ws_no_registrada():

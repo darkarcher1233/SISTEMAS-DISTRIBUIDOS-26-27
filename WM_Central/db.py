@@ -52,16 +52,18 @@ def crear_tablas():
                 ("fo1", "Operario 1"),
                 ("fo2", "Operario 2"),
                 ("fo3", "Operario 3"),
+                ("fo4", "Operario 4"),
             ]
             conn.executemany(
                 "INSERT OR IGNORE INTO operarios(id, nombre) VALUES (?, ?)",
                 operarios,
             )
-            # Las dos WS del escenario mínimo (docker-compose.ws.yml) vienen dadas de alta.
+            # Las cuatro WS de docker-compose.ws.yml vienen dadas de alta.
             # Las demás se dan de alta desde Central (menú opción 5 o panel web).
             conn.executemany(
                 "INSERT OR IGNORE INTO estaciones(id, ubicacion, estado) VALUES (?, ?, 'DESCONECTADA')",
-                [("WS1", "Parque Norte"), ("WS2", "Parque Sur")],
+                [("WS1", "Parque Norte"), ("WS2", "Parque Sur"),
+                 ("WS3", "Parque Este"), ("WS4", "Parque Oeste")],
             )
             conn.commit()
         finally:

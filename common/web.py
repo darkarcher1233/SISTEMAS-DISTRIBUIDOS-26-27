@@ -63,6 +63,8 @@ class _Manejador(BaseHTTPRequestHandler):
             self._fichero(srv.pagina, "text/html; charset=utf-8")
         elif ruta in ESTATICOS:
             self._fichero(ruta.lstrip("/"), ESTATICOS[ruta])
+        elif ruta in srv.extras:
+            self._fichero(srv.extras[ruta], "text/html; charset=utf-8")
         elif ruta == "/api/estado":
             self._ejecutar(srv.estado_fn)
         elif ruta.startswith("/api/") and ruta[5:] in srv.consultas:
@@ -127,9 +129,10 @@ class _Manejador(BaseHTTPRequestHandler):
 
 
 def iniciar_web(pagina, estado_fn, acciones=None, consultas=None, puerto=None,
-                puerto_defecto=8100, nombre="Interfaz web"):
+                puerto_defecto=8100, nombre="Interfaz web", extras=None):
     """Arranca el servidor en un hilo daemon. Devuelve el servidor (o None si no hay puerto).
 
+    extras: otras páginas de ui/ servidas por ruta, p. ej. {"/panel.html": "panel.html"}.
     puerto: fijo (si está ocupado no se busca otro). Si es None se usa WEB_PORT y, si tampoco,
     el primer puerto libre a partir de puerto_defecto.
     """
@@ -153,6 +156,7 @@ def iniciar_web(pagina, estado_fn, acciones=None, consultas=None, puerto=None,
     servidor.estado_fn = estado_fn
     servidor.acciones = acciones or {}
     servidor.consultas = consultas or {}
+    servidor.extras = extras or {}
     servidor.puerto = servidor.server_address[1]
     threading.Thread(target=servidor.serve_forever, daemon=True).start()
     print(f"[{time.strftime('%H:%M:%S')}] {nombre} en http://localhost:{servidor.puerto}", flush=True)
